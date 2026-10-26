@@ -1,0 +1,10 @@
+{
+  "name": "powerenergy-test",
+  "version": "1.0.0",
+  "description": "Mock MEA electricity rate test server",
+  "main": "server.js",
+  "scripts": {
+    "start": "node server.js"
+  },
+  "dependencies": {}
+}
