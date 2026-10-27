@@ -1,0 +1,491 @@
+const express = require('express');
+const cors = require('cors');
+const webpush = require('web-push');
+const multer = require('multer');
+const crypto = require('crypto');
+const fs = require('fs');
+const path = require('path');
+const os = require('os');
+
+const app = express();
+const PORT = process.env.PORT || 3000;
+
+// Folders setup
+const DATA_DIR = path.join(__dirname, 'data');
+const UPLOAD_DIR = path.join(__dirname, 'public', 'uploads');
+const DB_FILE = path.join(DATA_DIR, 'db.json');
+
+if (!fs.existsSync(DATA_DIR)) fs.mkdirSync(DATA_DIR, { recursive: true });
+if (!fs.existsSync(UPLOAD_DIR)) fs.mkdirSync(UPLOAD_DIR, { recursive: true });
+
+// Multer setup for imageFile uploads (LINE Notify compatible)
+const storage = multer.diskStorage({
+  destination: (req, file, cb) => cb(null, UPLOAD_DIR),
+  filename: (req, file, cb) => {
+    const ext = path.extname(file.originalname) || '.jpg';
+    cb(null, `img_${Date.now()}_${crypto.randomBytes(4).toString('hex')}${ext}`);
+  }
+});
+const upload = multer({ storage, limits: { fileSize: 10 * 1024 * 1024 } });
+
+app.use(cors());
+app.use(express.json({ limit: '10mb' }));
+app.use(express.urlencoded({ extended: true, limit: '10mb' }));
+app.use(express.static(path.join(__dirname, 'public')));
+
+// Load or initialize database
+function loadDB() {
+  if (fs.existsSync(DB_FILE)) {
+    try {
+      return JSON.parse(fs.readFileSync(DB_FILE, 'utf8'));
+    } catch (err) {
+      console.error('Error reading DB file, initializing fresh DB:', err);
+    }
+  }
+
+  // Use environment VAPID keys (for Render/Cloud) or generate on first run
+  const vapidKeys = (process.env.VAPID_PUBLIC_KEY && process.env.VAPID_PRIVATE_KEY)
+    ? { publicKey: process.env.VAPID_PUBLIC_KEY, privateKey: process.env.VAPID_PRIVATE_KEY }
+    : {
+        publicKey: 'BC-q8kHavBV9z7xjUyBFvueEtovCQtOCD-h8b--DaqKRZufHzB-StoNhIcnFufRKFaZtgkf7uLF9O7hNzzHRIlA',
+        privateKey: 'PGjw0ZwlXtGISVoV3REAcLDPgSnF4SS6ONaVB-4okgo'
+      };
+  const now = new Date().toISOString();
+
+  const initialDB = {
+    vapidKeys,
+    channels: [
+      {
+        id: 'ch_default',
+        name: 'แจ้งเตือนทั่วไป (General)',
+        description: 'ห้องหลักสำหรับรับการแจ้งเตือนทุกระบบ',
+        color: '#06C755',
+        createdAt: now
+      },
+      {
+        id: 'ch_tasks',
+        name: 'ระบบแจกงาน (Task Dispatch)',
+        description: 'แจ้งเตือนเมื่อมีงานใหม่มอบหมายให้ทีมงาน',
+        color: '#3B82F6',
+        createdAt: now
+      },
+      {
+        id: 'ch_urgent',
+        name: 'แจ้งเตือนด่วน (Urgent Alert)',
+        description: 'แจ้งเตือนระดับวิกฤตหรือเร่งด่วนพิเศษ',
+        color: '#EF4444',
+        createdAt: now
+      }
+    ],
+    tokens: [
+      {
+        id: 'tok_demo_1',
+        name: 'Token ทดสอบระบบแจกงาน',
+        token: 'NOTIFY-TASK-2026-DEMO',
+        channelId: 'ch_tasks',
+        createdAt: now,
+        lastUsedAt: null,
+        usageCount: 1
+      },
+      {
+        id: 'tok_demo_2',
+        name: 'Token แจ้งเตือนทั่วไป',
+        token: 'NOTIFY-GENERAL-2026',
+        channelId: 'ch_default',
+        createdAt: now,
+        lastUsedAt: null,
+        usageCount: 1
+      }
+    ],
+    subscriptions: [],
+    notifications: [
+      {
+        id: 'notif_welcome_1',
+        channelId: 'ch_tasks',
+        channelName: 'ระบบแจกงาน (Task Dispatch)',
+        channelColor: '#3B82F6',
+        tokenName: 'Token ทดสอบระบบแจกงาน',
+        title: '📋 งานใหม่: ตรวจสอบระบบแจ้งเตือน',
+        message: 'มอบหมายงานให้ตรวจสอบการเด้งแจ้งเตือนผ่านระบบ Notify ใหม่ ทดแทน LINE Notify เดิม',
+        priority: 'high',
+        assignee: 'ทีมพัฒนา',
+        isTask: true,
+        taskStatus: 'pending',
+        image: null,
+        url: null,
+        createdAt: now
+      },
+      {
+        id: 'notif_welcome_2',
+        channelId: 'ch_default',
+        channelName: 'แจ้งเตือนทั่วไป (General)',
+        channelColor: '#06C755',
+        tokenName: 'Token แจ้งเตือนทั่วไป',
+        title: '🚀 ระบบ Notify พร้อมใช้งานแล้ว!',
+        message: 'ยินดีต้อนรับสู่ระบบแจ้งเตือนส่วนตัวของคุณ สามารถกดที่เมนู "ทดสอบยิงแจ้งเตือน" เพื่อลองส่งข้อความแรกได้ทันที',
+        priority: 'normal',
+        assignee: null,
+        isTask: false,
+        taskStatus: null,
+        image: null,
+        url: null,
+        createdAt: now
+      }
+    ]
+  };
+
+  saveDB(initialDB);
+  return initialDB;
+}
+
+function saveDB(data) {
+  fs.writeFileSync(DB_FILE, JSON.stringify(data, null, 2), 'utf8');
+}
+
+const db = loadDB();
+
+// Configure Web Push with VAPID keys
+webpush.setVapidDetails(
+  'mailto:admin@notify.local',
+  db.vapidKeys.publicKey,
+  db.vapidKeys.privateKey
+);
+
+// SSE (Server-Sent Events) Clients for real-time live updates
+const sseClients = new Set();
+
+function broadcastSSE(event, payload) {
+  const data = `event: ${event}\ndata: ${JSON.stringify(payload)}\n\n`;
+  for (const client of sseClients) {
+    client.write(data);
+  }
+}
+
+// Get Local Network IP addresses so mobile devices on same Wi-Fi can connect
+function getLocalIPs() {
+  const interfaces = os.networkInterfaces();
+  const ips = [];
+  for (const name of Object.keys(interfaces)) {
+    for (const iface of interfaces[name]) {
+      if (iface.family === 'IPv4' && !iface.internal) {
+        ips.push(iface.address);
+      }
+    }
+  }
+  return ips;
+}
+
+// ==========================================
+// 0. HEALTH CHECK ENDPOINT (For Render.com & Keep-Alive)
+// ==========================================
+app.get('/api/health', (req, res) => {
+  res.status(200).json({ status: 'ok', uptime: process.uptime(), timestamp: new Date().toISOString() });
+});
+
+// ==========================================
+// 1. SSE REAL-TIME STREAM ENDPOINT
+// ==========================================
+app.get('/api/stream', (req, res) => {
+  res.setHeader('Content-Type', 'text/event-stream');
+  res.setHeader('Cache-Control', 'no-cache');
+  res.setHeader('Connection', 'keep-alive');
+  res.flushHeaders?.();
+
+  res.write(`event: connected\ndata: ${JSON.stringify({ status: 'ok', time: new Date().toISOString() })}\n\n`);
+  sseClients.add(res);
+
+  req.on('close', () => {
+    sseClients.delete(res);
+  });
+});
+
+// ==========================================
+// 2. INITIALIZATION & DASHBOARD DATA
+// ==========================================
+app.get('/api/init', (req, res) => {
+  const localIPs = getLocalIPs();
+  res.json({
+    vapidPublicKey: db.vapidKeys.publicKey,
+    channels: db.channels,
+    tokens: db.tokens,
+    notifications: db.notifications.slice(0, 100),
+    subscriberCount: db.subscriptions.length,
+    serverInfo: {
+      port: PORT,
+      localIPs,
+      urls: localIPs.map(ip => `http://${ip}:${PORT}`)
+    }
+  });
+});
+
+// ==========================================
+// 3. WEB PUSH SUBSCRIPTION ENDPOINT
+// ==========================================
+app.post('/api/subscribe', (req, res) => {
+  const { subscription, deviceName, channels } = req.body;
+  if (!subscription || !subscription.endpoint) {
+    return res.status(400).json({ status: 400, message: 'Invalid subscription object' });
+  }
+
+  const existingIndex = db.subscriptions.findIndex(s => s.subscription.endpoint === subscription.endpoint);
+  const subRecord = {
+    id: existingIndex >= 0 ? db.subscriptions[existingIndex].id : `sub_${Date.now()}`,
+    deviceName: deviceName || 'อุปกรณ์ทั่วไป',
+    channels: channels || ['*'],
+    subscription,
+    updatedAt: new Date().toISOString()
+  };
+
+  if (existingIndex >= 0) {
+    db.subscriptions[existingIndex] = subRecord;
+  } else {
+    db.subscriptions.push(subRecord);
+  }
+
+  saveDB(db);
+  res.json({ status: 200, message: 'Subscribed successfully', subscriberCount: db.subscriptions.length });
+});
+
+// ==========================================
+// 4. LINE NOTIFY COMPATIBLE ENDPOINT (/api/notify & /notify)
+// ==========================================
+async function handleNotify(req, res) {
+  try {
+    // 1. Extract token from Authorization: Bearer <TOKEN> or headers/body/query
+    let rawToken = null;
+    const authHeader = req.headers['authorization'] || req.headers['Authorization'];
+    if (authHeader && authHeader.toLowerCase().startsWith('bearer ')) {
+      rawToken = authHeader.slice(7).trim();
+    } else if (req.headers['x-notify-token']) {
+      rawToken = req.headers['x-notify-token'].trim();
+    } else if (req.body && req.body.token) {
+      rawToken = req.body.token.trim();
+    } else if (req.query && req.query.token) {
+      rawToken = req.query.token.trim();
+    }
+
+    if (!rawToken) {
+      return res.status(401).json({
+        status: 401,
+        message: 'Missing Authorization Bearer token (กรุณาระบุ Authorization: Bearer <TOKEN>)'
+      });
+    }
+
+    // 2. Verify token
+    const tokenObj = db.tokens.find(t => t.token === rawToken);
+    if (!tokenObj) {
+      return res.status(401).json({
+        status: 401,
+        message: 'Invalid access token (ไม่พบ Token นี้ในระบบ หรือถูกยกเลิกไปแล้ว)'
+      });
+    }
+
+    // 3. Validate message
+    const message = req.body.message;
+    if (!message || String(message).trim() === '') {
+      return res.status(400).json({
+        status: 400,
+        message: 'message is required (กรุณาระบุข้อความในฟิลด์ message)'
+      });
+    }
+
+    // 4. Find associated channel
+    const channel = db.channels.find(c => c.id === tokenObj.channelId) || {
+      id: 'ch_default',
+      name: 'แจ้งเตือนทั่วไป',
+      color: '#06C755'
+    };
+
+    // 5. Handle image (uploaded file or URL)
+    let imageUrl = req.body.imageFullsize || req.body.imageThumbnail || req.body.image || null;
+    if (req.file) {
+      imageUrl = `/uploads/${req.file.filename}`;
+    }
+
+    // 6. Task / Priority metadata
+    const isTask = req.body.isTask === true || req.body.isTask === 'true' || Boolean(req.body.assignee) || channel.id === 'ch_tasks';
+    const priority = ['low', 'normal', 'high', 'urgent'].includes(req.body.priority) ? req.body.priority : 'normal';
+
+    const notification = {
+      id: `notif_${Date.now()}_${crypto.randomBytes(3).toString('hex')}`,
+      channelId: channel.id,
+      channelName: channel.name,
+      channelColor: channel.color,
+      tokenName: tokenObj.name,
+      title: req.body.title || channel.name,
+      message: String(message).trim(),
+      priority,
+      assignee: req.body.assignee || null,
+      isTask,
+      taskStatus: isTask ? (req.body.taskStatus || 'pending') : null,
+      image: imageUrl,
+      url: req.body.url || null,
+      createdAt: new Date().toISOString()
+    };
+
+    // 7. Save to DB (keep latest 500 notifications)
+    db.notifications.unshift(notification);
+    if (db.notifications.length > 500) {
+      db.notifications = db.notifications.slice(0, 500);
+    }
+
+    // Update token usage stats
+    tokenObj.lastUsedAt = notification.createdAt;
+    tokenObj.usageCount = (tokenObj.usageCount || 0) + 1;
+    saveDB(db);
+
+    // 8. Broadcast via SSE (Real-time to all open web/PWA clients)
+    broadcastSSE('notification', notification);
+
+    // 9. Send Web Push Notification to subscribed background devices
+    const pushPayload = JSON.stringify({
+      id: notification.id,
+      title: notification.title,
+      body: notification.assignee
+        ? `[ผู้รับผิดชอบ: ${notification.assignee}] ${notification.message}`
+        : notification.message,
+      icon: '/icon-192.svg',
+      badge: '/icon-192.svg',
+      image: notification.image,
+      tag: notification.id,
+      priority: notification.priority,
+      url: notification.url || '/',
+      channelName: notification.channelName,
+      createdAt: notification.createdAt
+    });
+
+    const invalidEndpoints = [];
+    await Promise.allSettled(
+      db.subscriptions.map(async (sub) => {
+        try {
+          await webpush.sendNotification(sub.subscription, pushPayload);
+        } catch (err) {
+          if (err.statusCode === 404 || err.statusCode === 410) {
+            invalidEndpoints.push(sub.subscription.endpoint);
+          }
+        }
+      })
+    );
+
+    if (invalidEndpoints.length > 0) {
+      db.subscriptions = db.subscriptions.filter(s => !invalidEndpoints.includes(s.subscription.endpoint));
+      saveDB(db);
+    }
+
+    // Return exact LINE Notify compatible status 200 JSON + notification details
+    return res.status(200).json({
+      status: 200,
+      message: 'ok',
+      notification
+    });
+  } catch (error) {
+    console.error('Notify error:', error);
+    return res.status(500).json({ status: 500, message: error.message });
+  }
+}
+
+app.post('/api/notify', upload.single('imageFile'), handleNotify);
+app.post('/notify', upload.single('imageFile'), handleNotify);
+
+// ==========================================
+// 5. CHANNELS & TOKENS MANAGEMENT ENDPOINTS
+// ==========================================
+app.post('/api/channels', (req, res) => {
+  const { name, description, color } = req.body;
+  if (!name || !name.trim()) {
+    return res.status(400).json({ status: 400, message: 'กรุณาระบุชื่อห้องแจ้งเตือน' });
+  }
+  const newChannel = {
+    id: `ch_${Date.now()}`,
+    name: name.trim(),
+    description: (description || '').trim(),
+    color: color || '#06C755',
+    createdAt: new Date().toISOString()
+  };
+  db.channels.push(newChannel);
+  saveDB(db);
+  res.json({ status: 200, channel: newChannel });
+});
+
+app.delete('/api/channels/:id', (req, res) => {
+  const { id } = req.params;
+  if (id === 'ch_default') {
+    return res.status(400).json({ status: 400, message: 'ไม่สามารถลบห้องเริ่มต้นได้' });
+  }
+  db.channels = db.channels.filter(c => c.id !== id);
+  saveDB(db);
+  res.json({ status: 200, message: 'Deleted channel' });
+});
+
+app.post('/api/tokens', (req, res) => {
+  const { name, channelId } = req.body;
+  if (!name || !name.trim()) {
+    return res.status(400).json({ status: 400, message: 'กรุณาตั้งชื่อ Token' });
+  }
+  // Generate human-friendly, secure LINE-Notify-like token
+  const randomPart = crypto.randomBytes(18).toString('base64url');
+  const newToken = {
+    id: `tok_${Date.now()}`,
+    name: name.trim(),
+    token: `ntfy_${randomPart}`,
+    channelId: channelId || 'ch_default',
+    createdAt: new Date().toISOString(),
+    lastUsedAt: null,
+    usageCount: 0
+  };
+  db.tokens.unshift(newToken);
+  saveDB(db);
+  res.json({ status: 200, token: newToken });
+});
+
+app.delete('/api/tokens/:id', (req, res) => {
+  const { id } = req.params;
+  db.tokens = db.tokens.filter(t => t.id !== id);
+  saveDB(db);
+  res.json({ status: 200, message: 'Token revoked' });
+});
+
+// ==========================================
+// 6. TASK STATUS & NOTIFICATION ACTIONS
+// ==========================================
+app.patch('/api/notifications/:id/status', (req, res) => {
+  const { id } = req.params;
+  const { taskStatus, assignee } = req.body;
+  const notif = db.notifications.find(n => n.id === id);
+  if (!notif) {
+    return res.status(404).json({ status: 404, message: 'Notification not found' });
+  }
+  if (taskStatus) notif.taskStatus = taskStatus;
+  if (assignee !== undefined) notif.assignee = assignee;
+  notif.updatedAt = new Date().toISOString();
+  saveDB(db);
+
+  broadcastSSE('status_updated', notif);
+  res.json({ status: 200, notification: notif });
+});
+
+app.delete('/api/notifications/:id', (req, res) => {
+  const { id } = req.params;
+  db.notifications = db.notifications.filter(n => n.id !== id);
+  saveDB(db);
+  broadcastSSE('notification_deleted', { id });
+  res.json({ status: 200, message: 'Deleted' });
+});
+
+app.delete('/api/notifications', (req, res) => {
+  db.notifications = [];
+  saveDB(db);
+  broadcastSSE('notifications_cleared', {});
+  res.json({ status: 200, message: 'Cleared all notifications' });
+});
+
+app.listen(PORT, '0.0.0.0', () => {
+  const ips = getLocalIPs();
+  console.log('====================================================');
+  console.log(`🚀 ระบบแจ้งเตือน & แจกงาน (Notify Hub) เริ่มทำงานแล้ว!`);
+  console.log(`👉 เปิดบนคอมพิวเตอร์: http://localhost:${PORT}`);
+  ips.forEach(ip => {
+    console.log(`📱 เปิดผ่านมือถือ (Wi-Fi เดียวกัน): http://${ip}:${PORT}`);
+  });
+  console.log('====================================================');
+});

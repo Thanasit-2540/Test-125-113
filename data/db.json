@@ -1,0 +1,100 @@
+{
+  "vapidKeys": {
+    "publicKey": "BC-q8kHavBV9z7xjUyBFvueEtovCQtOCD-h8b--DaqKRZufHzB-StoNhIcnFufRKFaZtgkf7uLF9O7hNzzHRIlA",
+    "privateKey": "PGjw0ZwlXtGISVoV3REAcLDPgSnF4SS6ONaVB-4okgo"
+  },
+  "channels": [
+    {
+      "id": "ch_default",
+      "name": "แจ้งเตือนทั่วไป (General)",
+      "description": "ห้องหลักสำหรับรับการแจ้งเตือนทุกระบบ",
+      "color": "#06C755",
+      "createdAt": "2026-10-27T02:15:23.397Z"
+    },
+    {
+      "id": "ch_tasks",
+      "name": "ระบบแจกงาน (Task Dispatch)",
+      "description": "แจ้งเตือนเมื่อมีงานใหม่มอบหมายให้ทีมงาน",
+      "color": "#3B82F6",
+      "createdAt": "2026-10-27T02:15:23.397Z"
+    },
+    {
+      "id": "ch_urgent",
+      "name": "แจ้งเตือนด่วน (Urgent Alert)",
+      "description": "แจ้งเตือนระดับวิกฤตหรือเร่งด่วนพิเศษ",
+      "color": "#EF4444",
+      "createdAt": "2026-10-27T02:15:23.397Z"
+    }
+  ],
+  "tokens": [
+    {
+      "id": "tok_demo_1",
+      "name": "Token ทดสอบระบบแจกงาน",
+      "token": "NOTIFY-TASK-2026-DEMO",
+      "channelId": "ch_tasks",
+      "createdAt": "2026-10-27T02:15:23.397Z",
+      "lastUsedAt": "2026-10-27T02:15:35.275Z",
+      "usageCount": 2
+    },
+    {
+      "id": "tok_demo_2",
+      "name": "Token แจ้งเตือนทั่วไป",
+      "token": "NOTIFY-GENERAL-2026",
+      "channelId": "ch_default",
+      "createdAt": "2026-10-27T02:15:23.397Z",
+      "lastUsedAt": null,
+      "usageCount": 1
+    }
+  ],
+  "subscriptions": [],
+  "notifications": [
+    {
+      "id": "notif_1793067335275_d1ff30",
+      "channelId": "ch_tasks",
+      "channelName": "ระบบแจกงาน (Task Dispatch)",
+      "channelColor": "#3B82F6",
+      "tokenName": "Token ทดสอบระบบแจกงาน",
+      "title": "✅ ทดสอบยิง API สำเร็จ",
+      "message": "ระบบพร้อมรับคำสั่งแจกงานและแจ้งเตือนแทน LINE Notify แล้วครับ!",
+      "priority": "high",
+      "assignee": "คุณธนสิทธิ์",
+      "isTask": true,
+      "taskStatus": "pending",
+      "image": null,
+      "url": null,
+      "createdAt": "2026-10-27T02:15:35.275Z"
+    },
+    {
+      "id": "notif_welcome_1",
+      "channelId": "ch_tasks",
+      "channelName": "ระบบแจกงาน (Task Dispatch)",
+      "channelColor": "#3B82F6",
+      "tokenName": "Token ทดสอบระบบแจกงาน",
+      "title": "📋 งานใหม่: ตรวจสอบระบบแจ้งเตือน",
+      "message": "มอบหมายงานให้ตรวจสอบการเด้งแจ้งเตือนผ่านระบบ Notify ใหม่ ทดแทน LINE Notify เดิม",
+      "priority": "high",
+      "assignee": "ทีมพัฒนา",
+      "isTask": true,
+      "taskStatus": "pending",
+      "image": null,
+      "url": null,
+      "createdAt": "2026-10-27T02:15:23.397Z"
+    },
+    {
+      "id": "notif_welcome_2",
+      "channelId": "ch_default",
+      "channelName": "แจ้งเตือนทั่วไป (General)",
+      "channelColor": "#06C755",
+      "tokenName": "Token แจ้งเตือนทั่วไป",
+      "title": "🚀 ระบบ Notify พร้อมใช้งานแล้ว!",
+      "message": "ยินดีต้อนรับสู่ระบบแจ้งเตือนส่วนตัวของคุณ สามารถกดที่เมนู \"ทดสอบยิงแจ้งเตือน\" เพื่อลองส่งข้อความแรกได้ทันที",
+      "priority": "normal",
+      "assignee": null,
+      "isTask": false,
+      "taskStatus": null,
+      "image": null,
+      "url": null,
+      "createdAt": "2026-10-27T02:15:23.397Z"
+    }
+  ]
+}

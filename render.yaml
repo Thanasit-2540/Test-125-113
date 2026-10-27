@@ -1,0 +1,15 @@
+services:
+  - type: web
+    name: notifyhub-server
+    runtime: node
+    plan: free
+    buildCommand: npm install
+    startCommand: node server.js
+    healthCheckPath: /api/health
+    envVars:
+      - key: NODE_ENV
+        value: production
+      - key: VAPID_PUBLIC_KEY
+        value: BC-q8kHavBV9z7xjUyBFvueEtovCQtOCD-h8b--DaqKRZufHzB-StoNhIcnFufRKFaZtgkf7uLF9O7hNzzHRIlA
+      - key: VAPID_PRIVATE_KEY
+        value: PGjw0ZwlXtGISVoV3REAcLDPgSnF4SS6ONaVB-4okgo

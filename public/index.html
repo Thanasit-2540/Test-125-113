@@ -1,0 +1,1262 @@
+<!DOCTYPE html>
+<html lang="th">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <meta name="theme-color" content="#06C755" />
+  <title>NotifyHub - ระบบแจ้งเตือนและแจกงาน (LINE Notify Alternative)</title>
+  <link rel="manifest" href="/manifest.json" />
+  <link rel="icon" href="/icon-192.svg" type="image/svg+xml" />
+  <link rel="apple-touch-icon" href="/icon-192.svg" />
+  <link href="https://fonts.googleapis.com/css2?family=Prompt:wght@300;400;500;600;700&display=swap" rel="stylesheet" />
+  <style>
+    :root {
+      --bg: #0f172a;
+      --bg-card: #1e293b;
+      --bg-card-hover: #263449;
+      --bg-input: #0f172a;
+      --border: #334155;
+      --text: #f8fafc;
+      --text-muted: #94a3b8;
+      --primary: #06C755;
+      --primary-hover: #05a847;
+      --blue: #3b82f6;
+      --amber: #f59e0b;
+      --danger: #ef4444;
+      --radius: 14px;
+    }
+
+    * {
+      box-sizing: border-box;
+      margin: 0;
+      padding: 0;
+      font-family: 'Prompt', -apple-system, BlinkMacSystemFont, sans-serif;
+    }
+
+    body {
+      background-color: var(--bg);
+      color: var(--text);
+      min-height: 100vh;
+      line-height: 1.5;
+    }
+
+    /* Top Header */
+    .header {
+      background: rgba(30, 41, 59, 0.85);
+      backdrop-filter: blur(12px);
+      border-bottom: 1px solid var(--border);
+      position: sticky;
+      top: 0;
+      z-index: 50;
+      padding: 14px 24px;
+    }
+
+    .header-inner {
+      max-width: 1200px;
+      margin: 0 auto;
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      flex-wrap: wrap;
+      gap: 12px;
+    }
+
+    .brand {
+      display: flex;
+      align-items: center;
+      gap: 12px;
+    }
+
+    .brand img {
+      width: 42px;
+      height: 42px;
+      border-radius: 10px;
+    }
+
+    .brand-title {
+      font-size: 1.25rem;
+      font-weight: 700;
+      display: flex;
+      align-items: center;
+      gap: 8px;
+    }
+
+    .badge-live {
+      display: inline-flex;
+      align-items: center;
+      gap: 6px;
+      font-size: 0.75rem;
+      font-weight: 500;
+      padding: 3px 10px;
+      border-radius: 999px;
+      background: rgba(6, 199, 85, 0.15);
+      color: #4ade80;
+      border: 1px solid rgba(6, 199, 85, 0.3);
+    }
+
+    .dot-pulse {
+      width: 8px;
+      height: 8px;
+      background: #06C755;
+      border-radius: 50%;
+      animation: pulse 1.6s infinite;
+    }
+
+    @keyframes pulse {
+      0% { box-shadow: 0 0 0 0 rgba(6, 199, 85, 0.7); }
+      70% { box-shadow: 0 0 0 8px rgba(6, 199, 85, 0); }
+      100% { box-shadow: 0 0 0 0 rgba(6, 199, 85, 0); }
+    }
+
+    .header-actions {
+      display: flex;
+      align-items: center;
+      gap: 10px;
+      flex-wrap: wrap;
+    }
+
+    /* Buttons */
+    .btn {
+      display: inline-flex;
+      align-items: center;
+      justify-content: center;
+      gap: 8px;
+      padding: 9px 16px;
+      border-radius: 10px;
+      font-size: 0.9rem;
+      font-weight: 500;
+      border: 1px solid transparent;
+      cursor: pointer;
+      transition: all 0.2s;
+      color: var(--text);
+      background: var(--bg-card);
+    }
+
+    .btn-primary {
+      background: var(--primary);
+      color: #fff;
+      font-weight: 600;
+    }
+    .btn-primary:hover {
+      background: var(--primary-hover);
+      transform: translateY(-1px);
+    }
+
+    .btn-outline {
+      border-color: var(--border);
+      background: rgba(255,255,255,0.03);
+    }
+    .btn-outline:hover {
+      background: rgba(255,255,255,0.08);
+    }
+
+    .btn-danger {
+      background: rgba(239, 68, 68, 0.15);
+      color: #fca5a5;
+      border-color: rgba(239, 68, 68, 0.3);
+    }
+    .btn-danger:hover {
+      background: rgba(239, 68, 68, 0.28);
+    }
+
+    .btn-sm {
+      padding: 5px 11px;
+      font-size: 0.8rem;
+      border-radius: 8px;
+    }
+
+    /* Main Container */
+    .container {
+      max-width: 1200px;
+      margin: 24px auto;
+      padding: 0 20px 60px;
+    }
+
+    /* Navigation Tabs */
+    .nav-tabs {
+      display: flex;
+      gap: 8px;
+      margin-bottom: 24px;
+      background: var(--bg-card);
+      padding: 6px;
+      border-radius: 14px;
+      border: 1px solid var(--border);
+      overflow-x: auto;
+    }
+
+    .nav-tab {
+      flex: 1;
+      min-width: max-content;
+      padding: 11px 18px;
+      border-radius: 10px;
+      border: none;
+      background: transparent;
+      color: var(--text-muted);
+      font-size: 0.95rem;
+      font-weight: 500;
+      cursor: pointer;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      gap: 8px;
+      transition: all 0.2s;
+    }
+
+    .nav-tab:hover {
+      color: var(--text);
+      background: rgba(255, 255, 255, 0.04);
+    }
+
+    .nav-tab.active {
+      background: var(--primary);
+      color: #fff;
+      font-weight: 600;
+      box-shadow: 0 4px 12px rgba(6, 199, 85, 0.25);
+    }
+
+    .tab-pane {
+      display: none;
+    }
+    .tab-pane.active {
+      display: block;
+    }
+
+    /* Grid Layouts */
+    .grid-2 {
+      display: grid;
+      grid-template-columns: 1fr 1fr;
+      gap: 20px;
+    }
+
+    .grid-feed {
+      display: grid;
+      grid-template-columns: 340px 1fr;
+      gap: 22px;
+      align-items: start;
+    }
+
+    @media (max-width: 900px) {
+      .grid-2, .grid-feed {
+        grid-template-columns: 1fr;
+      }
+    }
+
+    /* Cards */
+    .card {
+      background: var(--bg-card);
+      border: 1px solid var(--border);
+      border-radius: var(--radius);
+      padding: 20px;
+      margin-bottom: 18px;
+    }
+
+    .card-header {
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      margin-bottom: 16px;
+      gap: 10px;
+    }
+
+    .card-title {
+      font-size: 1.1rem;
+      font-weight: 600;
+      display: flex;
+      align-items: center;
+      gap: 8px;
+    }
+
+    /* Forms */
+    .form-group {
+      margin-bottom: 14px;
+    }
+
+    .form-label {
+      display: block;
+      font-size: 0.85rem;
+      color: var(--text-muted);
+      margin-bottom: 6px;
+      font-weight: 500;
+    }
+
+    .form-control {
+      width: 100%;
+      padding: 10px 14px;
+      background: var(--bg-input);
+      border: 1px solid var(--border);
+      border-radius: 10px;
+      color: var(--text);
+      font-size: 0.95rem;
+      outline: none;
+      transition: border-color 0.2s;
+    }
+
+    .form-control:focus {
+      border-color: var(--primary);
+    }
+
+    textarea.form-control {
+      min-height: 92px;
+      resize: vertical;
+    }
+
+    /* Notification Cards */
+    .notif-list {
+      display: flex;
+      flex-direction: column;
+      gap: 12px;
+    }
+
+    .notif-card {
+      background: var(--bg-card);
+      border: 1px solid var(--border);
+      border-left: 5px solid var(--primary);
+      border-radius: 12px;
+      padding: 16px 18px;
+      transition: all 0.2s;
+      animation: slideIn 0.25s ease-out;
+    }
+
+    @keyframes slideIn {
+      from { opacity: 0; transform: translateY(-10px); }
+      to { opacity: 1; transform: translateY(0); }
+    }
+
+    .notif-card.priority-urgent {
+      border-left-color: var(--danger);
+      background: linear-gradient(90deg, rgba(239, 68, 68, 0.08) 0%, var(--bg-card) 35%);
+    }
+
+    .notif-card.priority-high {
+      border-left-color: var(--amber);
+    }
+
+    .notif-top {
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      gap: 8px;
+      margin-bottom: 8px;
+      flex-wrap: wrap;
+    }
+
+    .notif-badges {
+      display: flex;
+      align-items: center;
+      gap: 8px;
+      flex-wrap: wrap;
+    }
+
+    .pill {
+      font-size: 0.75rem;
+      padding: 2px 10px;
+      border-radius: 999px;
+      font-weight: 500;
+      background: rgba(255,255,255,0.08);
+    }
+
+    .pill-urgent {
+      background: rgba(239, 68, 68, 0.2);
+      color: #fca5a5;
+    }
+
+    .pill-high {
+      background: rgba(245, 158, 11, 0.2);
+      color: #fcd34d;
+    }
+
+    .notif-time {
+      font-size: 0.78rem;
+      color: var(--text-muted);
+    }
+
+    .notif-title {
+      font-size: 1.05rem;
+      font-weight: 600;
+      margin-bottom: 4px;
+    }
+
+    .notif-message {
+      color: #e2e8f0;
+      white-space: pre-wrap;
+      font-size: 0.95rem;
+      margin-bottom: 10px;
+    }
+
+    .notif-image {
+      max-width: 100%;
+      max-height: 280px;
+      border-radius: 10px;
+      margin-top: 8px;
+      margin-bottom: 10px;
+      border: 1px solid var(--border);
+    }
+
+    .notif-footer {
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      flex-wrap: wrap;
+      gap: 10px;
+      padding-top: 10px;
+      border-top: 1px solid rgba(255, 255, 255, 0.06);
+      margin-top: 6px;
+    }
+
+    .task-status-bar {
+      display: flex;
+      align-items: center;
+      gap: 6px;
+      flex-wrap: wrap;
+    }
+
+    .status-btn {
+      padding: 4px 12px;
+      border-radius: 8px;
+      font-size: 0.78rem;
+      font-weight: 500;
+      border: 1px solid var(--border);
+      background: rgba(255,255,255,0.03);
+      color: var(--text-muted);
+      cursor: pointer;
+      transition: all 0.15s;
+    }
+
+    .status-btn.active-pending {
+      background: rgba(245, 158, 11, 0.2);
+      color: #fcd34d;
+      border-color: rgba(245, 158, 11, 0.45);
+    }
+
+    .status-btn.active-in_progress {
+      background: rgba(59, 130, 246, 0.2);
+      color: #93c5fd;
+      border-color: rgba(59, 130, 246, 0.45);
+    }
+
+    .status-btn.active-done {
+      background: rgba(6, 199, 85, 0.2);
+      color: #4ade80;
+      border-color: rgba(6, 199, 85, 0.45);
+    }
+
+    /* Token Row */
+    .token-item {
+      background: var(--bg-input);
+      border: 1px solid var(--border);
+      border-radius: 12px;
+      padding: 14px;
+      margin-bottom: 10px;
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      gap: 12px;
+      flex-wrap: wrap;
+    }
+
+    .token-code {
+      font-family: monospace;
+      background: rgba(6, 199, 85, 0.1);
+      color: #4ade80;
+      padding: 4px 10px;
+      border-radius: 6px;
+      font-size: 0.88rem;
+      border: 1px solid rgba(6, 199, 85, 0.25);
+      user-select: all;
+    }
+
+    /* Code Block */
+    pre.code-box {
+      background: #090d16;
+      border: 1px solid var(--border);
+      border-radius: 12px;
+      padding: 16px;
+      overflow-x: auto;
+      color: #a5f3fc;
+      font-family: Consolas, Monaco, monospace;
+      font-size: 0.86rem;
+      line-height: 1.6;
+      margin-top: 8px;
+    }
+
+    /* Toast Popup */
+    #toast-container {
+      position: fixed;
+      bottom: 24px;
+      right: 24px;
+      z-index: 9999;
+      display: flex;
+      flex-direction: column;
+      gap: 10px;
+      max-width: 380px;
+    }
+
+    .toast {
+      background: #1e293b;
+      border: 1px solid var(--primary);
+      border-left: 5px solid var(--primary);
+      color: #fff;
+      padding: 14px 18px;
+      border-radius: 12px;
+      box-shadow: 0 12px 30px rgba(0,0,0,0.45);
+      animation: slideIn 0.25s ease-out;
+    }
+
+    .filter-bar {
+      display: flex;
+      gap: 8px;
+      margin-bottom: 16px;
+      flex-wrap: wrap;
+    }
+
+    .filter-chip {
+      padding: 6px 14px;
+      border-radius: 999px;
+      font-size: 0.83rem;
+      border: 1px solid var(--border);
+      background: var(--bg-card);
+      color: var(--text-muted);
+      cursor: pointer;
+    }
+
+    .filter-chip.active {
+      background: var(--primary);
+      color: #fff;
+      border-color: var(--primary);
+      font-weight: 600;
+    }
+  </style>
+</head>
+<body>
+
+  <!-- Top Header -->
+  <header class="header">
+    <div class="header-inner">
+      <div class="brand">
+        <img src="/icon-192.svg" alt="NotifyHub" />
+        <div>
+          <div class="brand-title">
+            NotifyHub
+            <span class="badge-live" id="connectionBadge">
+              <span class="dot-pulse"></span> ออนไลน์ (Real-time)
+            </span>
+          </div>
+          <div style="font-size: 0.78rem; color: var(--text-muted);">
+            ระบบแจ้งเตือนและแจกงานส่วนตัว (ทดแทน LINE Notify)
+          </div>
+        </div>
+      </div>
+
+      <div class="header-actions">
+        <button class="btn btn-outline btn-sm" id="soundToggleBtn" onclick="toggleSound()">
+          🔊 เสียงเตือน: เปิด
+        </button>
+        <button class="btn btn-primary btn-sm" id="pushSubBtn" onclick="enablePushNotifications()">
+          🔔 เปิดรับแจ้งเตือนบนเครื่องนี้
+        </button>
+      </div>
+    </div>
+  </header>
+
+  <main class="container">
+    <!-- Navigation Tabs -->
+    <div class="nav-tabs">
+      <button class="nav-tab active" onclick="switchTab('feed', this)">
+        🔔 กระดานแจ้งเตือน & แจกงาน (<span id="notifCountBadge">0</span>)
+      </button>
+      <button class="nav-tab" onclick="switchTab('tokens', this)">
+        🔑 ออก Token & ห้องแจ้งเตือน
+      </button>
+      <button class="nav-tab" onclick="switchTab('docs', this)">
+        💻 โค้ดเชื่อมต่อ API (cURL / Python / Sheets)
+      </button>
+    </div>
+
+    <!-- TAB 1: LIVE FEED + QUICK SEND PLAYGROUND -->
+    <section id="tab-feed" class="tab-pane active">
+      <div class="grid-feed">
+        
+        <!-- Left Column: Quick Send / Dispatch Task -->
+        <div class="card">
+          <div class="card-header">
+            <div class="card-title">⚡ ทดสอบส่งแจ้งเตือน / แจกงาน</div>
+          </div>
+          <p style="font-size: 0.83rem; color: var(--text-muted); margin-bottom: 14px;">
+            ลองพิมพ์ข้อความแล้วกดส่ง ระบบจะเด้งแจ้งเตือนพร้อมเสียงทันทีเหมือนยิงผ่าน API
+          </p>
+
+          <form id="quickSendForm" onsubmit="sendTestNotification(event)">
+            <div class="form-group">
+              <label class="form-label">เลือก Token ที่ใช้ส่ง</label>
+              <select id="sendTokenSelect" class="form-control" required></select>
+            </div>
+
+            <div class="form-group">
+              <label class="form-label">หัวข้อแจ้งเตือน (Title)</label>
+              <input type="text" id="sendTitle" class="form-control" placeholder="เช่น 📋 งานด่วน: แก้ไขระบบลูกค้า" value="📋 งานใหม่: ตรวจเช็คสต็อกสินค้า" />
+            </div>
+
+            <div class="form-group">
+              <label class="form-label">รายละเอียดข้อความ (Message) *</label>
+              <textarea id="sendMessage" class="form-control" required placeholder="พิมพ์ข้อความแจ้งเตือน...">รบกวนตรวจสอบรายการสั่งซื้อรอบเช้า และอัปเดตสถานะเมื่อดำเนินการเสร็จสิ้นครับ</textarea>
+            </div>
+
+            <div class="grid-2" style="gap: 10px;">
+              <div class="form-group">
+                <label class="form-label">ผู้รับผิดชอบ (ถ้ามี)</label>
+                <input type="text" id="sendAssignee" class="form-control" placeholder="เช่น คุณสมชาย / ทีมช่าง" value="ทีมปฏิบัติการ" />
+              </div>
+
+              <div class="form-group">
+                <label class="form-label">ระดับความสำคัญ</label>
+                <select id="sendPriority" class="form-control">
+                  <option value="normal">🟢 ปกติ (Normal)</option>
+                  <option value="high" selected>🟡 สำคัญ (High)</option>
+                  <option value="urgent">🔴 ด่วนที่สุด (Urgent)</option>
+                </select>
+              </div>
+            </div>
+
+            <div class="form-group">
+              <label class="form-label">ลิงก์แนบ / URL (ถ้ามี)</label>
+              <input type="url" id="sendUrl" class="form-control" placeholder="https://..." />
+            </div>
+
+            <button type="submit" class="btn btn-primary" style="width: 100%; padding: 12px; font-size: 1rem;">
+              🚀 ยิงแจ้งเตือนทันที!
+            </button>
+          </form>
+
+          <!-- Mobile Access Info Box -->
+          <div style="margin-top: 18px; padding-top: 14px; border-top: 1px solid var(--border); font-size: 0.82rem; color: var(--text-muted);">
+            <div style="font-weight: 600; color: var(--text); margin-bottom: 4px;">📱 เปิดบนมือถือ (Wi-Fi เดียวกัน):</div>
+            <div id="lanUrlsList">กำลังตรวจสอบ IP...</div>
+          </div>
+        </div>
+
+        <!-- Right Column: Live Notification Feed -->
+        <div>
+          <div style="display: flex; align-items: center; justify-content: space-between; margin-bottom: 12px; flex-wrap: wrap; gap: 10px;">
+            <div class="filter-bar" id="channelFilterBar" style="margin-bottom: 0;">
+              <button class="filter-chip active" onclick="setChannelFilter('all', this)">ทั้งหมด</button>
+            </div>
+
+            <button class="btn btn-outline btn-sm" onclick="clearAllNotifications()">
+              🗑️ ล้างประวัติทั้งหมด
+            </button>
+          </div>
+
+          <div id="notifList" class="notif-list"></div>
+        </div>
+
+      </div>
+    </section>
+
+    <!-- TAB 2: TOKENS & CHANNELS MANAGEMENT -->
+    <section id="tab-tokens" class="tab-pane">
+      <div class="grid-2">
+        <!-- Create & Manage Tokens -->
+        <div class="card">
+          <div class="card-header">
+            <div class="card-title">🔑 ออก Access Token (เหมือน LINE Notify)</div>
+          </div>
+          <form onsubmit="createToken(event)" style="margin-bottom: 20px;">
+            <div class="grid-2" style="gap: 10px;">
+              <div class="form-group">
+                <label class="form-label">ชื่อเรียก Token (เช่น ระบบบัญชี / บอทแจกงาน)</label>
+                <input type="text" id="newTokenName" class="form-control" placeholder="ระบุชื่อ Token..." required />
+              </div>
+              <div class="form-group">
+                <label class="form-label">เลือกห้องแจ้งเตือนที่จะให้ข้อความเข้า</label>
+                <select id="newTokenChannel" class="form-control"></select>
+              </div>
+            </div>
+            <button type="submit" class="btn btn-primary">➕ ออก Token ใหม่</button>
+          </form>
+
+          <div id="tokensList"></div>
+        </div>
+
+        <!-- Create & Manage Channels -->
+        <div class="card">
+          <div class="card-header">
+            <div class="card-title">📁 ห้องแจ้งเตือน (Channels / กลุ่มงาน)</div>
+          </div>
+          <form onsubmit="createChannel(event)" style="margin-bottom: 20px;">
+            <div class="grid-2" style="gap: 10px;">
+              <div class="form-group">
+                <label class="form-label">ชื่อห้อง / กลุ่มงาน</label>
+                <input type="text" id="newChannelName" class="form-control" placeholder="เช่น ฝ่ายขาย / แจ้งซ่อม" required />
+              </div>
+              <div class="form-group">
+                <label class="form-label">สีประจำห้อง</label>
+                <input type="color" id="newChannelColor" class="form-control" value="#06C755" style="height: 43px; padding: 4px;" />
+              </div>
+            </div>
+            <div class="form-group">
+              <label class="form-label">คำอธิบาย</label>
+              <input type="text" id="newChannelDesc" class="form-control" placeholder="รายละเอียดของห้องแจ้งเตือนนี้" />
+            </div>
+            <button type="submit" class="btn btn-primary">➕ สร้างห้องแจ้งเตือนใหม่</button>
+          </form>
+
+          <div id="channelsList"></div>
+        </div>
+      </div>
+    </section>
+
+    <!-- TAB 3: API DOCS & READY-TO-COPY CODE -->
+    <section id="tab-docs" class="tab-pane">
+      <div class="card">
+        <div class="card-header">
+          <div class="card-title">💻 วิธีเชื่อมต่อ API (แทนที่ LINE Notify ได้ทันที)</div>
+        </div>
+        <p style="color: var(--text-muted); font-size: 0.92rem; margin-bottom: 16px;">
+          ระบบนี้ออกแบบให้รับค่าแบบเดียวกับ LINE Notify (`Authorization: Bearer &lt;TOKEN&gt;` และพารามิเตอร์ `message`) คุณจึงสามารถเปลี่ยนแค่ URL และ Token ในโค้ดเดิมของคุณได้เลย!
+        </p>
+
+        <div class="form-group" style="max-width: 420px;">
+          <label class="form-label">เลือก Token เพื่อสร้างโค้ดตัวอย่างอัตโนมัติ:</label>
+          <select id="docTokenSelect" class="form-control" onchange="renderCodeExamples()"></select>
+        </div>
+
+        <div class="grid-2" style="margin-top: 16px;">
+          <div>
+            <h4 style="margin-bottom: 6px;">1. cURL (Command Line)</h4>
+            <pre class="code-box" id="codeCurl"></pre>
+          </div>
+          <div>
+            <h4 style="margin-bottom: 6px;">2. Python (requests)</h4>
+            <pre class="code-box" id="codePython"></pre>
+          </div>
+          <div>
+            <h4 style="margin-bottom: 6px;">3. Node.js / JavaScript (fetch)</h4>
+            <pre class="code-box" id="codeNode"></pre>
+          </div>
+          <div>
+            <h4 style="margin-bottom: 6px;">4. Google Sheets (Apps Script)</h4>
+            <pre class="code-box" id="codeGAS"></pre>
+          </div>
+        </div>
+      </div>
+    </section>
+  </main>
+
+  <div id="toast-container"></div>
+
+  <script>
+    let state = {
+      vapidPublicKey: '',
+      channels: [],
+      tokens: [],
+      notifications: [],
+      selectedChannel: 'all',
+      soundEnabled: true,
+      serverInfo: {}
+    };
+
+    // Synthesize crisp notification chime using Web Audio API (no external MP3 needed)
+    function playNotificationSound(priority = 'normal') {
+      if (!state.soundEnabled) return;
+      try {
+        const ctx = new (window.AudioContext || window.webkitAudioContext)();
+        const now = ctx.currentTime;
+
+        const freqs = priority === 'urgent' ? [880, 1174, 880, 1174] : [587.33, 880];
+        freqs.forEach((f, idx) => {
+          const osc = ctx.createOscillator();
+          const gain = ctx.createGain();
+          osc.type = priority === 'urgent' ? 'triangle' : 'sine';
+          osc.frequency.setValueAtTime(f, now + idx * 0.13);
+          gain.gain.setValueAtTime(0.22, now + idx * 0.13);
+          gain.gain.exponentialRampToValueAtTime(0.001, now + idx * 0.13 + 0.25);
+          osc.connect(gain);
+          gain.connect(ctx.destination);
+          osc.start(now + idx * 0.13);
+          osc.stop(now + idx * 0.13 + 0.26);
+        });
+      } catch (e) {
+        console.warn('Audio play blocked until user interaction:', e);
+      }
+    }
+
+    function toggleSound() {
+      state.soundEnabled = !state.soundEnabled;
+      const btn = document.getElementById('soundToggleBtn');
+      btn.textContent = state.soundEnabled ? '🔊 เสียงเตือน: เปิด' : '🔇 เสียงเตือน: ปิด';
+      if (state.soundEnabled) playNotificationSound('normal');
+    }
+
+    function showToast(title, message) {
+      const container = document.getElementById('toast-container');
+      const el = document.createElement('div');
+      el.className = 'toast';
+      el.innerHTML = `
+        <div style="font-weight: 600; margin-bottom: 3px;">${escapeHtml(title)}</div>
+        <div style="font-size: 0.85rem; color: #cbd5e1;">${escapeHtml(message)}</div>
+      `;
+      container.appendChild(el);
+      setTimeout(() => el.remove(), 4500);
+    }
+
+    function escapeHtml(str) {
+      return String(str || '')
+        .replace(/&/g, '&amp;')
+        .replace(/</g, '&lt;')
+        .replace(/>/g, '&gt;')
+        .replace(/"/g, '&quot;');
+    }
+
+    function switchTab(tabId, btn) {
+      document.querySelectorAll('.tab-pane').forEach(p => p.classList.remove('active'));
+      document.querySelectorAll('.nav-tab').forEach(b => b.classList.remove('active'));
+      document.getElementById(`tab-${tabId}`).classList.add('active');
+      btn.classList.add('active');
+    }
+
+    // Load initial data
+    async function initApp() {
+      const res = await fetch('/api/init');
+      const data = await res.json();
+      state.vapidPublicKey = data.vapidPublicKey;
+      state.channels = data.channels;
+      state.tokens = data.tokens;
+      state.notifications = data.notifications;
+      state.serverInfo = data.serverInfo;
+
+      renderAll();
+      connectSSE();
+      checkExistingPushSubscription();
+    }
+
+    function renderAll() {
+      renderChannelFilters();
+      renderNotifications();
+      renderTokenSelects();
+      renderTokensList();
+      renderChannelsList();
+      renderCodeExamples();
+      renderLanUrls();
+    }
+
+    function renderLanUrls() {
+      const box = document.getElementById('lanUrlsList');
+      const urls = (state.serverInfo && state.serverInfo.urls) || [];
+      if (urls.length === 0) {
+        box.innerHTML = `<code>${window.location.origin}</code>`;
+      } else {
+        box.innerHTML = urls.map(u => `<div style="margin-top:2px;"><a href="${u}" target="_blank" style="color:#4ade80;">${u}</a></div>`).join('');
+      }
+    }
+
+    function renderChannelFilters() {
+      const bar = document.getElementById('channelFilterBar');
+      let html = `<button class="filter-chip ${state.selectedChannel === 'all' ? 'active' : ''}" onclick="setChannelFilter('all', this)">ทั้งหมด (${state.notifications.length})</button>`;
+      state.channels.forEach(c => {
+        const count = state.notifications.filter(n => n.channelId === c.id).length;
+        html += `<button class="filter-chip ${state.selectedChannel === c.id ? 'active' : ''}" onclick="setChannelFilter('${c.id}', this)">${escapeHtml(c.name)} (${count})</button>`;
+      });
+      bar.innerHTML = html;
+      document.getElementById('notifCountBadge').textContent = state.notifications.length;
+    }
+
+    function setChannelFilter(channelId, btn) {
+      state.selectedChannel = channelId;
+      renderChannelFilters();
+      renderNotifications();
+    }
+
+    function renderNotifications() {
+      const list = document.getElementById('notifList');
+      const filtered = state.selectedChannel === 'all'
+        ? state.notifications
+        : state.notifications.filter(n => n.channelId === state.selectedChannel);
+
+      if (filtered.length === 0) {
+        list.innerHTML = `
+          <div class="card" style="text-align: center; padding: 48px 20px; color: var(--text-muted);">
+            <div style="font-size: 2.5rem; margin-bottom: 10px;">📭</div>
+            <div>ยังไม่มีรายการแจ้งเตือนในหมวดหมู่นี้</div>
+          </div>
+        `;
+        return;
+      }
+
+      list.innerHTML = filtered.map(n => {
+        const timeStr = new Date(n.createdAt).toLocaleString('th-TH');
+        const priorityBadge = n.priority === 'urgent'
+          ? `<span class="pill pill-urgent">🔴 ด่วนที่สุด</span>`
+          : n.priority === 'high'
+          ? `<span class="pill pill-high">🟡 สำคัญ</span>`
+          : '';
+
+        const assigneeBadge = n.assignee
+          ? `<span class="pill" style="background: rgba(59,130,246,0.2); color: #93c5fd;">👤 ผู้รับงาน: ${escapeHtml(n.assignee)}</span>`
+          : '';
+
+        const taskControls = n.isTask ? `
+          <div class="task-status-bar">
+            <span style="font-size: 0.78rem; color: var(--text-muted);">สถานะงาน:</span>
+            <button class="status-btn ${n.taskStatus === 'pending' ? 'active-pending' : ''}" onclick="updateTaskStatus('${n.id}', 'pending')">⏳ รอรับงาน</button>
+            <button class="status-btn ${n.taskStatus === 'in_progress' ? 'active-in_progress' : ''}" onclick="updateTaskStatus('${n.id}', 'in_progress')">🔧 กำลังทำ</button>
+            <button class="status-btn ${n.taskStatus === 'done' ? 'active-done' : ''}" onclick="updateTaskStatus('${n.id}', 'done')">✅ เสร็จสิ้น</button>
+          </div>
+        ` : '<div></div>';
+
+        return `
+          <div class="notif-card priority-${n.priority}" style="border-left-color: ${n.priority === 'urgent' ? '#ef4444' : (n.channelColor || '#06C755')}">
+            <div class="notif-top">
+              <div class="notif-badges">
+                <span class="pill" style="border: 1px solid ${n.channelColor || '#06C755'}; color: #fff;">
+                  ${escapeHtml(n.channelName)}
+                </span>
+                ${priorityBadge}
+                ${assigneeBadge}
+              </div>
+              <div class="notif-time">${timeStr}</div>
+            </div>
+
+            <div class="notif-title">${escapeHtml(n.title)}</div>
+            <div class="notif-message">${escapeHtml(n.message)}</div>
+
+            ${n.image ? `<img src="${escapeHtml(n.image)}" class="notif-image" alt="attachment" />` : ''}
+            ${n.url ? `<div style="margin-bottom: 8px;"><a href="${escapeHtml(n.url)}" target="_blank" style="color: #38bdf8; font-size: 0.88rem;">🔗 เปิดลิงก์แนบ: ${escapeHtml(n.url)}</a></div>` : ''}
+
+            <div class="notif-footer">
+              ${taskControls}
+              <button class="btn btn-outline btn-sm" onclick="deleteNotification('${n.id}')" title="ลบข้อความนี้">🗑️</button>
+            </div>
+          </div>
+        `;
+      }).join('');
+    }
+
+    function renderTokenSelects() {
+      const sendSel = document.getElementById('sendTokenSelect');
+      const docSel = document.getElementById('docTokenSelect');
+      const chSel = document.getElementById('newTokenChannel');
+
+      const tokenOptions = state.tokens.map(t => {
+        const ch = state.channels.find(c => c.id === t.channelId);
+        return `<option value="${escapeHtml(t.token)}">${escapeHtml(t.name)} (${escapeHtml(ch ? ch.name : 'ทั่วไป')})</option>`;
+      }).join('');
+
+      sendSel.innerHTML = tokenOptions;
+      docSel.innerHTML = tokenOptions;
+
+      chSel.innerHTML = state.channels.map(c => `<option value="${c.id}">${escapeHtml(c.name)}</option>`).join('');
+    }
+
+    function renderTokensList() {
+      const container = document.getElementById('tokensList');
+      container.innerHTML = state.tokens.map(t => {
+        const ch = state.channels.find(c => c.id === t.channelId);
+        return `
+          <div class="token-item">
+            <div>
+              <div style="font-weight: 600;">${escapeHtml(t.name)}</div>
+              <div style="font-size: 0.8rem; color: var(--text-muted); margin-bottom: 6px;">
+                ห้อง: ${escapeHtml(ch ? ch.name : 'ทั่วไป')} • ส่งแล้ว ${t.usageCount || 0} ครั้ง
+              </div>
+              <span class="token-code">${escapeHtml(t.token)}</span>
+            </div>
+            <div style="display: flex; gap: 8px;">
+              <button class="btn btn-outline btn-sm" onclick="copyText('${escapeHtml(t.token)}')">📋 คัดลอก Token</button>
+              <button class="btn btn-danger btn-sm" onclick="deleteToken('${t.id}')">ยกเลิก</button>
+            </div>
+          </div>
+        `;
+      }).join('');
+    }
+
+    function renderChannelsList() {
+      const container = document.getElementById('channelsList');
+      container.innerHTML = state.channels.map(c => `
+        <div class="token-item" style="border-left: 4px solid ${c.color};">
+          <div>
+            <div style="font-weight: 600;">${escapeHtml(c.name)}</div>
+            <div style="font-size: 0.82rem; color: var(--text-muted);">${escapeHtml(c.description || '-')}</div>
+          </div>
+          ${c.id !== 'ch_default' ? `<button class="btn btn-danger btn-sm" onclick="deleteChannel('${c.id}')">ลบห้อง</button>` : '<span class="pill">ห้องหลัก</span>'}
+        </div>
+      `).join('');
+    }
+
+    function renderCodeExamples() {
+      const token = document.getElementById('docTokenSelect')?.value || 'YOUR_TOKEN';
+      const endpoint = `${window.location.origin}/api/notify`;
+
+      document.getElementById('codeCurl').textContent =
+`curl -X POST ${endpoint} \\
+  -H "Authorization: Bearer ${token}" \\
+  -d "message=มีงานใหม่เข้า!" \\
+  -d "assignee=ทีมช่าง" \\
+  -d "priority=high"`;
+
+      document.getElementById('codePython').textContent =
+`import requests
+
+url = "${endpoint}"
+headers = {"Authorization": "Bearer ${token}"}
+data = {
+    "title": "แจ้งเตือนงานใหม่",
+    "message": "ตรวจสอบคำสั่งซื้อ #1024",
+    "assignee": "สมชาย",
+    "priority": "high"
+}
+r = requests.post(url, headers=headers, data=data)
+print(r.json())`;
+
+      document.getElementById('codeNode').textContent =
+`await fetch("${endpoint}", {
+  method: "POST",
+  headers: {
+    "Authorization": "Bearer ${token}",
+    "Content-Type": "application/json"
+  },
+  body: JSON.stringify({
+    title: "งานด่วน",
+    message: "ลูกค้าแจ้งขอใบเสนอราคา",
+    assignee: "ฝ่ายขาย",
+    priority: "urgent"
+  })
+});`;
+
+      document.getElementById('codeGAS').textContent =
+`function sendNotify() {
+  var url = "${endpoint}";
+  var options = {
+    "method": "post",
+    "headers": { "Authorization": "Bearer ${token}" },
+    "payload": {
+      "message": "แจ้งเตือนจาก Google Sheets!",
+      "assignee": "ทีมแอดมิน"
+    }
+  };
+  UrlFetchApp.fetch(url, options);
+}`;
+    }
+
+    // Actions
+    async function sendTestNotification(e) {
+      e.preventDefault();
+      const token = document.getElementById('sendTokenSelect').value;
+      const title = document.getElementById('sendTitle').value;
+      const message = document.getElementById('sendMessage').value;
+      const assignee = document.getElementById('sendAssignee').value;
+      const priority = document.getElementById('sendPriority').value;
+      const url = document.getElementById('sendUrl').value;
+
+      const res = await fetch('/api/notify', {
+        method: 'POST',
+        headers: {
+          'Authorization': `Bearer ${token}`,
+          'Content-Type': 'application/json'
+        },
+        body: JSON.stringify({
+          title,
+          message,
+          assignee: assignee || null,
+          priority,
+          url: url || null,
+          isTask: Boolean(assignee)
+        })
+      });
+
+      const data = await res.json();
+      if (res.ok) {
+        showToast('🚀 ส่งแจ้งเตือนสำเร็จ!', message);
+      } else {
+        alert(data.message || 'เกิดข้อผิดพลาดในการส่ง');
+      }
+    }
+
+    async function updateTaskStatus(id, taskStatus) {
+      await fetch(`/api/notifications/${id}/status`, {
+        method: 'PATCH',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ taskStatus })
+      });
+    }
+
+    async function deleteNotification(id) {
+      await fetch(`/api/notifications/${id}`, { method: 'DELETE' });
+    }
+
+    async function clearAllNotifications() {
+      if (!confirm('ต้องการล้างประวัติการแจ้งเตือนทั้งหมดใช่หรือไม่?')) return;
+      await fetch('/api/notifications', { method: 'DELETE' });
+    }
+
+    async function createToken(e) {
+      e.preventDefault();
+      const name = document.getElementById('newTokenName').value;
+      const channelId = document.getElementById('newTokenChannel').value;
+      const res = await fetch('/api/tokens', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ name, channelId })
+      });
+      const data = await res.json();
+      if (res.ok) {
+        state.tokens.unshift(data.token);
+        document.getElementById('newTokenName').value = '';
+        renderAll();
+        showToast('🔑 สร้าง Token สำเร็จ', `Token: ${data.token.token}`);
+      }
+    }
+
+    async function deleteToken(id) {
+      if (!confirm('ยืนยันการยกเลิก Token นี้?')) return;
+      await fetch(`/api/tokens/${id}`, { method: 'DELETE' });
+      state.tokens = state.tokens.filter(t => t.id !== id);
+      renderAll();
+    }
+
+    async function createChannel(e) {
+      e.preventDefault();
+      const name = document.getElementById('newChannelName').value;
+      const color = document.getElementById('newChannelColor').value;
+      const description = document.getElementById('newChannelDesc').value;
+      const res = await fetch('/api/channels', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ name, color, description })
+      });
+      const data = await res.json();
+      if (res.ok) {
+        state.channels.push(data.channel);
+        document.getElementById('newChannelName').value = '';
+        document.getElementById('newChannelDesc').value = '';
+        renderAll();
+        showToast('📁 สร้างห้องสำเร็จ', data.channel.name);
+      }
+    }
+
+    async function deleteChannel(id) {
+      if (!confirm('ยืนยันการลบห้องแจ้งเตือนนี้?')) return;
+      await fetch(`/api/channels/${id}`, { method: 'DELETE' });
+      state.channels = state.channels.filter(c => c.id !== id);
+      renderAll();
+    }
+
+    function copyText(text) {
+      navigator.clipboard.writeText(text);
+      showToast('📋 คัดลอกแล้ว', text);
+    }
+
+    // Real-time Server-Sent Events (SSE)
+    function connectSSE() {
+      const es = new EventSource('/api/stream');
+
+      es.addEventListener('notification', (e) => {
+        const notif = JSON.parse(e.data);
+        state.notifications.unshift(notif);
+        renderChannelFilters();
+        renderNotifications();
+        playNotificationSound(notif.priority);
+        showToast(`🔔 ${notif.title}`, notif.message);
+
+        // Also trigger browser desktop notification if granted and Service Worker didn't already show it
+        if ('Notification' in window && Notification.permission === 'granted' && !navigator.serviceWorker?.controller) {
+          new Notification(notif.title, { body: notif.message, icon: '/icon-192.svg' });
+        }
+      });
+
+      es.addEventListener('status_updated', (e) => {
+        const updated = JSON.parse(e.data);
+        const idx = state.notifications.findIndex(n => n.id === updated.id);
+        if (idx >= 0) {
+          state.notifications[idx] = updated;
+          renderNotifications();
+        }
+      });
+
+      es.addEventListener('notification_deleted', (e) => {
+        const { id } = JSON.parse(e.data);
+        state.notifications = state.notifications.filter(n => n.id !== id);
+        renderChannelFilters();
+        renderNotifications();
+      });
+
+      es.addEventListener('notifications_cleared', () => {
+        state.notifications = [];
+        renderChannelFilters();
+        renderNotifications();
+      });
+    }
+
+    // Web Push Subscription Helpers
+    function urlBase64ToUint8Array(base64String) {
+      const padding = '='.repeat((4 - base64String.length % 4) % 4);
+      const base64 = (base64String + padding).replace(/-/g, '+').replace(/_/g, '/');
+      const rawData = window.atob(base64);
+      const outputArray = new Uint8Array(rawData.length);
+      for (let i = 0; i < rawData.length; ++i) {
+        outputArray[i] = rawData.charCodeAt(i);
+      }
+      return outputArray;
+    }
+
+    async function checkExistingPushSubscription() {
+      if (!('serviceWorker' in navigator) || !('PushManager' in window)) return;
+      try {
+        const reg = await navigator.serviceWorker.register('/sw.js');
+        const sub = await reg.pushManager.getSubscription();
+        if (sub) {
+          const btn = document.getElementById('pushSubBtn');
+          btn.textContent = '✅ เปิดรับแจ้งเตือนบนเครื่องนี้แล้ว';
+          btn.classList.remove('btn-primary');
+          btn.classList.add('btn-outline');
+        }
+      } catch (err) {
+        console.warn('Service worker check error:', err);
+      }
+    }
+
+    async function enablePushNotifications() {
+      if (!('Notification' in window)) {
+        alert('บราวเซอร์นี้ไม่รองรับระบบ Push Notification');
+        return;
+      }
+
+      const permission = await Notification.requestPermission();
+      if (permission !== 'granted') {
+        alert('กรุณากดอนุญาต (Allow) การแจ้งเตือนในบราวเซอร์');
+        return;
+      }
+
+      try {
+        const reg = await navigator.serviceWorker.register('/sw.js');
+        await navigator.serviceWorker.ready;
+
+        const sub = await reg.pushManager.subscribe({
+          userVisibleOnly: true,
+          applicationServerKey: urlBase64ToUint8Array(state.vapidPublicKey)
+        });
+
+        await fetch('/api/subscribe', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({
+            subscription: sub,
+            deviceName: navigator.userAgent.slice(0, 60)
+          })
+        });
+
+        const btn = document.getElementById('pushSubBtn');
+        btn.textContent = '✅ เปิดรับแจ้งเตือนบนเครื่องนี้แล้ว';
+        btn.classList.remove('btn-primary');
+        btn.classList.add('btn-outline');
+        showToast('🔔 เปิดรับแจ้งเตือนสำเร็จ!', 'เครื่องนี้พร้อมรับ Push Notification แม้พับหน้าจออยู่');
+        playNotificationSound('normal');
+      } catch (err) {
+        console.error('Push subscription error:', err);
+        showToast('🔔 เปิดรับการแจ้งเตือนผ่านหน้าเว็บสำเร็จ', 'พร้อมแจ้งเตือนแบบ Real-time ทันที');
+      }
+    }
+
+    initApp();
+  </script>
+</body>
+</html>

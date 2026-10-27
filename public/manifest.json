@@ -1,0 +1,18 @@
+{
+  "name": "NotifyHub - ระบบแจ้งเตือนและแจกงาน",
+  "short_name": "NotifyHub",
+  "description": "ระบบแจ้งเตือนและแจกงานส่วนตัว ทดแทน LINE Notify",
+  "start_url": "/",
+  "display": "standalone",
+  "background_color": "#0F172A",
+  "theme_color": "#06C755",
+  "orientation": "portrait-primary",
+  "icons": [
+    {
+      "src": "/icon-192.svg",
+      "sizes": "192x192 512x512",
+      "type": "image/svg+xml",
+      "purpose": "any maskable"
+    }
+  ]
+}
