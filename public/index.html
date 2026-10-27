@@ -525,6 +525,32 @@
       border-color: var(--primary);
       font-weight: 600;
     }
+
+    /* Admin Modal */
+    .modal-backdrop {
+      position: fixed;
+      inset: 0;
+      background: rgba(2, 6, 23, 0.75);
+      backdrop-filter: blur(6px);
+      display: none;
+      align-items: center;
+      justify-content: center;
+      z-index: 200;
+      padding: 16px;
+    }
+    .modal-backdrop.open {
+      display: flex;
+    }
+    .modal-card {
+      background: var(--bg-card);
+      border: 1px solid var(--border);
+      border-radius: 16px;
+      width: 100%;
+      max-width: 390px;
+      padding: 24px;
+      box-shadow: 0 20px 50px rgba(0,0,0,0.5);
+      animation: slideIn 0.2s ease-out;
+    }
   </style>
 </head>
 <body>
@@ -554,101 +580,86 @@
         <button class="btn btn-primary btn-sm" id="pushSubBtn" onclick="enablePushNotifications()">
           🔔 เปิดรับแจ้งเตือนบนเครื่องนี้
         </button>
+        <button class="btn btn-outline btn-sm" id="adminAuthBtn" onclick="handleAdminBtnClick()">
+          🔒 แอดมิน
+        </button>
       </div>
     </div>
   </header>
 
+  <!-- Admin Login Modal -->
+  <div class="modal-backdrop" id="adminLoginModal">
+    <div class="modal-card">
+      <div class="card-header" style="margin-bottom: 12px;">
+        <div class="card-title">🔒 เข้าสู่ระบบแอดมิน</div>
+        <button class="btn btn-outline btn-sm" onclick="closeAdminModal()">✕</button>
+      </div>
+      <p style="font-size: 0.84rem; color: var(--text-muted); margin-bottom: 16px;">
+        สำหรับผู้ดูแลระบบเพื่อจัดการ Token, ห้องแจ้งเตือน และดูโค้ดเชื่อมต่อ API
+      </p>
+      <form onsubmit="submitAdminLogin(event)">
+        <div class="form-group">
+          <label class="form-label">รหัสผ่านแอดมิน (Password)</label>
+          <input type="password" id="adminPasswordInput" class="form-control" placeholder="กรอกรหัสผ่านแอดมิน..." required />
+        </div>
+        <div style="display: flex; gap: 10px; margin-top: 18px;">
+          <button type="button" class="btn btn-outline" style="flex: 1;" onclick="closeAdminModal()">ยกเลิก</button>
+          <button type="submit" class="btn btn-primary" style="flex: 1;">เข้าสู่ระบบ</button>
+        </div>
+      </form>
+    </div>
+  </div>
+
   <main class="container">
     <!-- Navigation Tabs -->
     <div class="nav-tabs">
-      <button class="nav-tab active" onclick="switchTab('feed', this)">
+      <button class="nav-tab active" id="tabBtnFeed" onclick="switchTab('feed', this)">
         🔔 กระดานแจ้งเตือน & แจกงาน (<span id="notifCountBadge">0</span>)
       </button>
-      <button class="nav-tab" onclick="switchTab('tokens', this)">
+      <button class="nav-tab" id="tabBtnBacklog" onclick="switchTab('backlog', this)">
+        📋 หน้างานค้างซ่อม (<span id="backlogCountBadge">0</span>)
+      </button>
+      <button class="nav-tab admin-only" id="tabBtnTokens" style="display: none;" onclick="switchTab('tokens', this)">
         🔑 ออก Token & ห้องแจ้งเตือน
       </button>
-      <button class="nav-tab" onclick="switchTab('docs', this)">
+      <button class="nav-tab admin-only" id="tabBtnDocs" style="display: none;" onclick="switchTab('docs', this)">
         💻 โค้ดเชื่อมต่อ API (cURL / Python / Sheets)
       </button>
     </div>
 
-    <!-- TAB 1: LIVE FEED + QUICK SEND PLAYGROUND -->
+    <!-- TAB 1: LIVE FEED (Full-width, clean without Test Playground) -->
     <section id="tab-feed" class="tab-pane active">
-      <div class="grid-feed">
-        
-        <!-- Left Column: Quick Send / Dispatch Task -->
-        <div class="card">
-          <div class="card-header">
-            <div class="card-title">⚡ ทดสอบส่งแจ้งเตือน / แจกงาน</div>
+      <div>
+        <div style="display: flex; align-items: center; justify-content: space-between; margin-bottom: 14px; flex-wrap: wrap; gap: 10px;">
+          <div class="filter-bar" id="channelFilterBar" style="margin-bottom: 0;">
+            <button class="filter-chip active" onclick="setChannelFilter('all', this)">ทั้งหมด</button>
           </div>
-          <p style="font-size: 0.83rem; color: var(--text-muted); margin-bottom: 14px;">
-            ลองพิมพ์ข้อความแล้วกดส่ง ระบบจะเด้งแจ้งเตือนพร้อมเสียงทันทีเหมือนยิงผ่าน API
-          </p>
 
-          <form id="quickSendForm" onsubmit="sendTestNotification(event)">
-            <div class="form-group">
-              <label class="form-label">เลือก Token ที่ใช้ส่ง</label>
-              <select id="sendTokenSelect" class="form-control" required></select>
-            </div>
-
-            <div class="form-group">
-              <label class="form-label">หัวข้อแจ้งเตือน (Title)</label>
-              <input type="text" id="sendTitle" class="form-control" placeholder="เช่น 📋 งานด่วน: แก้ไขระบบลูกค้า" value="📋 งานใหม่: ตรวจเช็คสต็อกสินค้า" />
-            </div>
-
-            <div class="form-group">
-              <label class="form-label">รายละเอียดข้อความ (Message) *</label>
-              <textarea id="sendMessage" class="form-control" required placeholder="พิมพ์ข้อความแจ้งเตือน...">รบกวนตรวจสอบรายการสั่งซื้อรอบเช้า และอัปเดตสถานะเมื่อดำเนินการเสร็จสิ้นครับ</textarea>
-            </div>
-
-            <div class="grid-2" style="gap: 10px;">
-              <div class="form-group">
-                <label class="form-label">ผู้รับผิดชอบ (ถ้ามี)</label>
-                <input type="text" id="sendAssignee" class="form-control" placeholder="เช่น คุณสมชาย / ทีมช่าง" value="ทีมปฏิบัติการ" />
-              </div>
-
-              <div class="form-group">
-                <label class="form-label">ระดับความสำคัญ</label>
-                <select id="sendPriority" class="form-control">
-                  <option value="normal">🟢 ปกติ (Normal)</option>
-                  <option value="high" selected>🟡 สำคัญ (High)</option>
-                  <option value="urgent">🔴 ด่วนที่สุด (Urgent)</option>
-                </select>
-              </div>
-            </div>
-
-            <div class="form-group">
-              <label class="form-label">ลิงก์แนบ / URL (ถ้ามี)</label>
-              <input type="url" id="sendUrl" class="form-control" placeholder="https://..." />
-            </div>
-
-            <button type="submit" class="btn btn-primary" style="width: 100%; padding: 12px; font-size: 1rem;">
-              🚀 ยิงแจ้งเตือนทันที!
-            </button>
-          </form>
-
-          <!-- Mobile Access Info Box -->
-          <div style="margin-top: 18px; padding-top: 14px; border-top: 1px solid var(--border); font-size: 0.82rem; color: var(--text-muted);">
-            <div style="font-weight: 600; color: var(--text); margin-bottom: 4px;">📱 เปิดบนมือถือ (Wi-Fi เดียวกัน):</div>
-            <div id="lanUrlsList">กำลังตรวจสอบ IP...</div>
-          </div>
+          <button class="btn btn-outline btn-sm admin-only" id="clearAllBtn" style="display: none;" onclick="clearAllNotifications()">
+            🗑️ ล้างประวัติทั้งหมด
+          </button>
         </div>
 
-        <!-- Right Column: Live Notification Feed -->
-        <div>
-          <div style="display: flex; align-items: center; justify-content: space-between; margin-bottom: 12px; flex-wrap: wrap; gap: 10px;">
-            <div class="filter-bar" id="channelFilterBar" style="margin-bottom: 0;">
-              <button class="filter-chip active" onclick="setChannelFilter('all', this)">ทั้งหมด</button>
-            </div>
+        <div id="notifList" class="notif-list"></div>
+      </div>
+    </section>
 
-            <button class="btn btn-outline btn-sm" onclick="clearAllNotifications()">
-              🗑️ ล้างประวัติทั้งหมด
-            </button>
-          </div>
-
-          <div id="notifList" class="notif-list"></div>
+    <!-- TAB 1.5: DEDICATED BACKLOG PAGE (หน้างานค้างซ่อม) -->
+    <section id="tab-backlog" class="tab-pane">
+      <div class="card">
+        <div class="card-header">
+          <div class="card-title">📋 รายการงานค้างซ่อมทั้งหมด (หมวดไฟฟ้า/โทรศัพท์)</div>
+          <div id="backlogSummaryBadges" style="display:flex; gap:8px; flex-wrap:wrap;"></div>
         </div>
-
+        <div class="filter-bar" id="backlogTechFilterBar">
+          <button class="filter-chip active" onclick="setBacklogTechFilter('all', this)">ช่างทั้งหมด</button>
+          <button class="filter-chip" onclick="setBacklogTechFilter('overdue', this)">🔴 เฉพาะงานเกินกำหนด</button>
+          <button class="filter-chip" onclick="setBacklogTechFilter('นาย มี', this)">👤 นาย มี</button>
+          <button class="filter-chip" onclick="setBacklogTechFilter('นาย พิวพิว', this)">👤 นาย พิวพิว</button>
+          <button class="filter-chip" onclick="setBacklogTechFilter('นาย ศิวกร', this)">👤 นาย ศิวกร</button>
+          <button class="filter-chip" onclick="setBacklogTechFilter('นาย อาทิตย์', this)">👤 นาย อาทิตย์</button>
+        </div>
+        <div id="backlogList" class="notif-list"></div>
       </div>
     </section>
 
@@ -751,9 +762,75 @@
       tokens: [],
       notifications: [],
       selectedChannel: 'all',
+      selectedBacklogFilter: 'all',
       soundEnabled: true,
+      isAdmin: sessionStorage.getItem('notifyhub_admin') === 'true',
       serverInfo: {}
     };
+
+    function handleAdminBtnClick() {
+      if (state.isAdmin) {
+        if (confirm('ต้องการออกจากระบบแอดมินใช่หรือไม่?')) {
+          state.isAdmin = false;
+          sessionStorage.removeItem('notifyhub_admin');
+          updateAdminUI();
+          switchTab('feed', document.getElementById('tabBtnFeed'));
+          showToast('🔒 ออกจากระบบแอดมินแล้ว', 'ซ่อนเมนูจัดการ Token และเชื่อมต่อ API แล้ว');
+        }
+      } else {
+        document.getElementById('adminPasswordInput').value = '';
+        document.getElementById('adminLoginModal').classList.add('open');
+        setTimeout(() => document.getElementById('adminPasswordInput').focus(), 100);
+      }
+    }
+
+    function closeAdminModal() {
+      document.getElementById('adminLoginModal').classList.remove('open');
+    }
+
+    async function submitAdminLogin(e) {
+      e.preventDefault();
+      const password = document.getElementById('adminPasswordInput').value.trim();
+
+      try {
+        const res = await fetch('/api/admin/login', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ password })
+        });
+        if (res.ok) {
+          state.isAdmin = true;
+          sessionStorage.setItem('notifyhub_admin', 'true');
+          closeAdminModal();
+          updateAdminUI();
+          showToast('👑 เข้าสู่ระบบแอดมินสำเร็จ', 'เปิดเมนูออก Token และโค้ดเชื่อมต่อ API แล้ว');
+          return;
+        }
+      } catch (err) {
+        if (password === 'Thanasit') {
+          state.isAdmin = true;
+          sessionStorage.setItem('notifyhub_admin', 'true');
+          closeAdminModal();
+          updateAdminUI();
+          showToast('👑 เข้าสู่ระบบแอดมินสำเร็จ', 'เปิดเมนูออก Token และโค้ดเชื่อมต่อ API แล้ว');
+          return;
+        }
+      }
+      alert('รหัสผ่านแอดมินไม่ถูกต้อง!');
+    }
+
+    function updateAdminUI() {
+      const btn = document.getElementById('adminAuthBtn');
+      if (btn) {
+        btn.textContent = state.isAdmin ? '👑 แอดมิน (ออกจากระบบ)' : '🔒 แอดมิน';
+        btn.style.borderColor = state.isAdmin ? 'var(--primary)' : '';
+        btn.style.color = state.isAdmin ? '#4ade80' : '';
+      }
+      document.querySelectorAll('.admin-only').forEach(el => {
+        el.style.display = state.isAdmin ? '' : 'none';
+      });
+      renderNotifications();
+    }
 
     // Synthesize crisp notification chime using Web Audio API (no external MP3 needed)
     function playNotificationSound(priority = 'normal') {
@@ -808,10 +885,14 @@
     }
 
     function switchTab(tabId, btn) {
+      if ((tabId === 'tokens' || tabId === 'docs') && !state.isAdmin) {
+        handleAdminBtnClick();
+        return;
+      }
       document.querySelectorAll('.tab-pane').forEach(p => p.classList.remove('active'));
       document.querySelectorAll('.nav-tab').forEach(b => b.classList.remove('active'));
       document.getElementById(`tab-${tabId}`).classList.add('active');
-      btn.classList.add('active');
+      if (btn) btn.classList.add('active');
     }
 
     // Load initial data
@@ -824,6 +905,7 @@
       state.notifications = data.notifications;
       state.serverInfo = data.serverInfo;
 
+      updateAdminUI();
       renderAll();
       connectSSE();
       checkExistingPushSubscription();
@@ -832,6 +914,7 @@
     function renderAll() {
       renderChannelFilters();
       renderNotifications();
+      renderBacklogView();
       renderTokenSelects();
       renderTokensList();
       renderChannelsList();
@@ -839,8 +922,81 @@
       renderLanUrls();
     }
 
+    function setBacklogTechFilter(filterVal, btn) {
+      state.selectedBacklogFilter = filterVal;
+      document.querySelectorAll('#backlogTechFilterBar .filter-chip').forEach(b => b.classList.remove('active'));
+      if (btn) btn.classList.add('active');
+      renderBacklogView();
+    }
+
+    function renderBacklogView() {
+      const backlogCh = state.channels.find(c => c.name.includes('งานค้าง'));
+      const allBacklog = backlogCh
+        ? state.notifications.filter(n => n.channelId === backlogCh.id)
+        : state.notifications.filter(n => (n.channelName || '').includes('งานค้าง'));
+
+      const badgeEl = document.getElementById('backlogCountBadge');
+      if (badgeEl) badgeEl.textContent = allBacklog.length;
+
+      const overdueCount = allBacklog.filter(n => n.priority === 'urgent').length;
+      const normalCount = allBacklog.length - overdueCount;
+
+      const summaryEl = document.getElementById('backlogSummaryBadges');
+      if (summaryEl) {
+        summaryEl.innerHTML = `
+          <span class="pill" style="background:rgba(245,158,11,0.2);color:#fcd34d;">ทั้งหมด ${allBacklog.length} งาน</span>
+          <span class="pill pill-urgent">🔴 เกินกำหนด ${overdueCount} งาน</span>
+          <span class="pill" style="background:rgba(6,199,85,0.2);color:#4ade80;">🟢 อยู่ในกำหนด ${normalCount} งาน</span>
+        `;
+      }
+
+      let filtered = allBacklog;
+      if (state.selectedBacklogFilter === 'overdue') {
+        filtered = allBacklog.filter(n => n.priority === 'urgent');
+      } else if (state.selectedBacklogFilter !== 'all') {
+        filtered = allBacklog.filter(n => (n.assignee || '').includes(state.selectedBacklogFilter));
+      }
+
+      const listEl = document.getElementById('backlogList');
+      if (!listEl) return;
+
+      if (filtered.length === 0) {
+        listEl.innerHTML = `<div style="text-align:center;padding:36px;color:var(--text-muted);">ไม่พบรายการงานค้างซ่อมในตัวกรองนี้</div>`;
+        return;
+      }
+
+      listEl.innerHTML = filtered.map(n => {
+        const priorityBadge = n.priority === 'urgent'
+          ? `<span class="pill pill-urgent">🔴 เกินกำหนด</span>`
+          : `<span class="pill pill-high">🟡 กำลังดำเนินการ</span>`;
+
+        const assigneeBadge = n.assignee
+          ? `<span class="pill" style="background: rgba(59,130,246,0.2); color: #93c5fd;">👨‍🔧 ช่าง: ${escapeHtml(n.assignee)}</span>`
+          : '';
+
+        return `
+          <div class="notif-card priority-${n.priority}" style="border-left-color: ${n.priority === 'urgent' ? '#ef4444' : '#f59e0b'}">
+            <div class="notif-top">
+              <div class="notif-badges">
+                ${priorityBadge}
+                ${assigneeBadge}
+              </div>
+              <div class="task-status-bar">
+                <button class="status-btn ${n.taskStatus === 'in_progress' ? 'active-in_progress' : ''}" onclick="updateTaskStatus('${n.id}', 'in_progress')">🔧 ค้างซ่อม</button>
+                <button class="status-btn ${n.taskStatus === 'done' ? 'active-done' : ''}" onclick="updateTaskStatus('${n.id}', 'done')">✅ ซ่อมเสร็จแล้ว</button>
+              </div>
+            </div>
+            <div class="notif-title">${escapeHtml(n.title)}</div>
+            <div class="notif-message">${escapeHtml(n.message)}</div>
+            ${n.image ? `<img src="${escapeHtml(n.image)}" class="notif-image" alt="attachment" />` : ''}
+          </div>
+        `;
+      }).join('');
+    }
+
     function renderLanUrls() {
       const box = document.getElementById('lanUrlsList');
+      if (!box) return;
       const urls = (state.serverInfo && state.serverInfo.urls) || [];
       if (urls.length === 0) {
         box.innerHTML = `<code>${window.location.origin}</code>`;
@@ -924,7 +1080,7 @@
 
             <div class="notif-footer">
               ${taskControls}
-              <button class="btn btn-outline btn-sm" onclick="deleteNotification('${n.id}')" title="ลบข้อความนี้">🗑️</button>
+              ${state.isAdmin ? `<button class="btn btn-outline btn-sm" onclick="deleteNotification('${n.id}')" title="ลบข้อความนี้">🗑️</button>` : ''}
             </div>
           </div>
         `;
@@ -941,10 +1097,10 @@
         return `<option value="${escapeHtml(t.token)}">${escapeHtml(t.name)} (${escapeHtml(ch ? ch.name : 'ทั่วไป')})</option>`;
       }).join('');
 
-      sendSel.innerHTML = tokenOptions;
-      docSel.innerHTML = tokenOptions;
+      if (sendSel) sendSel.innerHTML = tokenOptions;
+      if (docSel) docSel.innerHTML = tokenOptions;
 
-      chSel.innerHTML = state.channels.map(c => `<option value="${c.id}">${escapeHtml(c.name)}</option>`).join('');
+      if (chSel) chSel.innerHTML = state.channels.map(c => `<option value="${c.id}">${escapeHtml(c.name)}</option>`).join('');
     }
 
     function renderTokensList() {
@@ -1154,6 +1310,7 @@ print(r.json())`;
         state.notifications.unshift(notif);
         renderChannelFilters();
         renderNotifications();
+        renderBacklogView();
         playNotificationSound(notif.priority);
         showToast(`🔔 ${notif.title}`, notif.message);
 
@@ -1169,6 +1326,7 @@ print(r.json())`;
         if (idx >= 0) {
           state.notifications[idx] = updated;
           renderNotifications();
+          renderBacklogView();
         }
       });
 

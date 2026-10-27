@@ -176,10 +176,21 @@ function getLocalIPs() {
 }
 
 // ==========================================
-// 0. HEALTH CHECK ENDPOINT (For Render.com & Keep-Alive)
+// 0. HEALTH CHECK & ADMIN LOGIN ENDPOINTS
 // ==========================================
 app.get('/api/health', (req, res) => {
   res.status(200).json({ status: 'ok', uptime: process.uptime(), timestamp: new Date().toISOString() });
+});
+
+app.post('/api/admin/login', (req, res) => {
+  const { password } = req.body || {};
+  const validPass = process.env.ADMIN_PASSWORD || 'Thanasit';
+  const inputPass = String(password || '').trim();
+
+  if (inputPass === validPass) {
+    return res.json({ status: 200, isAdmin: true });
+  }
+  return res.status(401).json({ status: 401, isAdmin: false, message: 'รหัสผ่านแอดมินไม่ถูกต้อง' });
 });
 
 // ==========================================
@@ -488,4 +499,12 @@ app.listen(PORT, '0.0.0.0', () => {
     console.log(`📱 เปิดผ่านมือถือ (Wi-Fi เดียวกัน): http://${ip}:${PORT}`);
   });
   console.log('====================================================');
+
+  // Keep Render server awake (ping every 5 minutes so Free Tier never sleeps)
+  const RENDER_URL = process.env.RENDER_EXTERNAL_URL || 'https://powerenergy-rfik.onrender.com';
+  setInterval(() => {
+    fetch(`${RENDER_URL}/api/health`)
+      .then(r => console.log(`[Keep-Alive] Pinged ${RENDER_URL}/api/health -> ${r.status}`))
+      .catch(err => console.warn(`[Keep-Alive] Ping error:`, err.message));
+  }, 5 * 60 * 1000);
 });
