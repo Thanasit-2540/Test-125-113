@@ -637,7 +637,7 @@
         </button>
       </form>
       <div style="margin-top: 20px; font-size: 0.82rem; color: var(--text-muted); border-top: 1px solid rgba(255,255,255,0.08); padding-top: 14px;">
-        🔒 เฉพาะพนักงานที่ได้รับสิทธิ์เท่านั้น หากเข้าไม่ได้กรุณาติดต่อผู้ดูแลระบบ
+        🔒 พนักงานกรอกรหัสพนักงาน / แอดมินสามารถพิมพ์รหัสผ่านแอดมินลงในช่องนี้เพื่อเข้าสู่ระบบจัดการได้โดยตรง
       </div>
     </div>
   </div>
@@ -1067,6 +1067,23 @@
         if (res.ok && data.ok && data.user) {
           state.currentUser = data.user;
           localStorage.setItem('notifyhub_user', JSON.stringify(data.user));
+
+          // If logged in as Admin directly from the main input box
+          if (data.isAdmin && data.adminToken) {
+            state.isAdmin = true;
+            state.adminToken = data.adminToken;
+            sessionStorage.setItem('notifyhub_admin', 'true');
+            sessionStorage.setItem('notifyhub_admin_token', data.adminToken);
+            updateAdminUI();
+            loadAdminTokens();
+            loadTechniciansList();
+            checkUserAuth();
+            switchTab('techs', document.getElementById('tabBtnTechs'));
+            showToast('👑 ยินดีต้อนรับผู้ดูแลระบบ', 'เข้าสู่ระบบแอดมินสำเร็จ เปิดเมนูจัดการช่างเรียบร้อยแล้ว');
+            renderAll();
+            return;
+          }
+
           checkUserAuth();
           showToast(`👋 ยินดีต้อนรับคุณ ${data.user.name}`, `เข้าสู่ระบบด้วยรหัส ${data.user.id} สำเร็จ`);
           renderAll();

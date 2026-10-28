@@ -336,7 +336,27 @@ app.post('/api/auth/login', (req, res) => {
     return res.status(400).json({ ok: false, error: 'กรุณากรอกรหัสพนักงาน' });
   }
 
-  const cleanId = String(employeeId).trim().toUpperCase();
+  const rawInput = String(employeeId).trim();
+  const validAdminPasswords = getValidAdminPasswords();
+
+  // If input matches Admin Password, log in directly as Administrator!
+  if (validAdminPasswords.has(rawInput)) {
+    resetFailedAttempts(req);
+    const adminToken = `adm_${crypto.randomBytes(24).toString('base64url')}`;
+    activeAdminSessions.add(adminToken);
+    return res.json({
+      ok: true,
+      isAdmin: true,
+      adminToken,
+      user: {
+        id: 'ADMIN',
+        name: 'ผู้ดูแลระบบ (Admin)',
+        role: 'admin'
+      }
+    });
+  }
+
+  const cleanId = rawInput.toUpperCase();
   const tech = (db.technicians || []).find(t => t.id && String(t.id).trim().toUpperCase() === cleanId);
 
   if (!tech || tech.active === false) {
@@ -365,6 +385,14 @@ app.post('/api/auth/login', (req, res) => {
 app.get('/api/auth/verify', (req, res) => {
   const id = String(req.query.id || '').trim().toUpperCase();
   if (!id) return res.json({ ok: false, active: false });
+
+  if (id === 'ADMIN') {
+    return res.json({
+      ok: true,
+      active: true,
+      user: { id: 'ADMIN', name: 'ผู้ดูแลระบบ (Admin)', role: 'admin' }
+    });
+  }
 
   const tech = (db.technicians || []).find(t => t.id && String(t.id).trim().toUpperCase() === id);
   if (!tech || tech.active === false) {
