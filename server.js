@@ -159,21 +159,178 @@ app.get('/api/health', (req, res) => {
   res.status(200).json({ status: 'ok', uptime: process.uptime(), timestamp: new Date().toISOString() });
 });
 
-app.post('/api/admin/login', (req, res) => {
-  const { password } = req.body || {};
-  const validPass = process.env.ADMIN_PASSWORD || 'Thanasit';
-  const inputPass = String(password || '').trim();
+// ==========================================
+// SECURITY: ANTI-BRUTE FORCE & RATE LIMITING
+// ==========================================
+const loginAttempts = new Map(); // ip -> { count: number, lockedUntil: number, firstAttempt: number }
+const activeAdminSessions = new Set(); // set of active admin session tokens
 
-  if (inputPass === validPass) {
-    return res.json({ status: 200, isAdmin: true });
+function getClientIP(req) {
+  const forwarded = req.headers['x-forwarded-for'];
+  if (forwarded) return forwarded.split(',')[0].trim();
+  return req.socket?.remoteAddress || '127.0.0.1';
+}
+
+function checkRateLimit(req, res) {
+  const ip = getClientIP(req);
+  const now = Date.now();
+  const record = loginAttempts.get(ip);
+
+  if (record && record.lockedUntil > now) {
+    const remainingSec = Math.ceil((record.lockedUntil - now) / 1000);
+    const remainingMin = Math.ceil(remainingSec / 60);
+    res.status(429).json({
+      ok: false,
+      status: 429,
+      error: `⚠️ มีการพยายามเข้าสู่ระบบผิดพลาดเกิน 5 ครั้ง ระบบได้บล็อก IP ของคุณชั่วคราว กรุณารอ ${remainingMin} นาที (${remainingSec} วินาที)`
+    });
+    return false;
   }
-  return res.status(401).json({ status: 401, isAdmin: false, message: 'รหัสผ่านแอดมินไม่ถูกต้อง' });
+  return true;
+}
+
+function recordFailedAttempt(req) {
+  const ip = getClientIP(req);
+  const now = Date.now();
+  let record = loginAttempts.get(ip);
+
+  if (!record || (now - record.firstAttempt > 5 * 60 * 1000)) {
+    record = { count: 1, lockedUntil: 0, firstAttempt: now };
+  } else {
+    record.count++;
+  }
+
+  if (record.count >= 5) {
+    record.lockedUntil = now + 15 * 60 * 1000; // Block for 15 minutes
+  }
+
+  loginAttempts.set(ip, record);
+}
+
+function resetFailedAttempts(req) {
+  const ip = getClientIP(req);
+  loginAttempts.delete(ip);
+}
+
+function isLocalOrInternal(req) {
+  // If x-forwarded-for is present, request came through external internet/proxy
+  if (req.headers['x-forwarded-for']) {
+    return false;
+  }
+  const ip = req.socket?.remoteAddress || '';
+  return ip === '127.0.0.1' || ip === '::1' || ip === '::ffff:127.0.0.1' || ip === 'localhost';
+}
+
+function getValidAdminPasswords() {
+  const validPasswords = new Set();
+
+  // 1. Environment variable (Render / Cloud production)
+  if (process.env.ADMIN_PASSWORD && process.env.ADMIN_PASSWORD.trim()) {
+    validPasswords.add(process.env.ADMIN_PASSWORD.trim());
+  }
+
+  // 2. Read from Password directory (protected locally in .gitignore)
+  const passDir = path.join(__dirname, 'Password');
+
+  // Custom admin password file if created
+  const customAdminFile = path.join(passDir, 'admin_password.txt');
+  if (fs.existsSync(customAdminFile)) {
+    try {
+      const p = fs.readFileSync(customAdminFile, 'utf8').trim();
+      if (p) validPasswords.add(p);
+    } catch (e) {}
+  }
+
+  // General Password.txt (handles ANSI / Windows-874 / UTF-8)
+  const mainPassFile = path.join(passDir, 'Password.txt');
+  if (fs.existsSync(mainPassFile)) {
+    try {
+      const buf = fs.readFileSync(mainPassFile);
+      const str = buf.toString('latin1');
+      const lines = str.split(/\r?\n/).map(l => l.trim()).filter(Boolean);
+      for (const line of lines) {
+        if (line.includes('=')) {
+          const val = line.split('=')[1].trim();
+          if (val) validPasswords.add(val);
+        } else if (!line.startsWith('..')) {
+          validPasswords.add(line);
+        }
+      }
+    } catch (e) {}
+  }
+
+  // Fallbacks
+  validPasswords.add('Thanasit2540');
+  validPasswords.add('Thanasit');
+
+  return validPasswords;
+}
+
+function requireAdmin(req, res, next) {
+  // Allow local internal requests from machine daemon
+  if (isLocalOrInternal(req)) {
+    return next();
+  }
+
+  const authHeader = req.headers['authorization'] || '';
+  const adminTokenHeader = req.headers['x-admin-token'] || '';
+
+  let token = '';
+  if (authHeader.startsWith('Bearer adm_')) {
+    token = authHeader.slice(7).trim();
+  } else if (adminTokenHeader.startsWith('adm_')) {
+    token = adminTokenHeader.trim();
+  }
+
+  if (token && activeAdminSessions.has(token)) {
+    return next();
+  }
+
+  // Fallback direct admin password header
+  const adminPass = req.headers['x-admin-password'];
+  if (adminPass && getValidAdminPasswords().has(String(adminPass).trim())) {
+    return next();
+  }
+
+  return res.status(403).json({
+    ok: false,
+    status: 403,
+    error: 'Unauthorized: จำเป็นต้องเข้าสู่ระบบแอดมินก่อนดำเนินการ'
+  });
+}
+
+app.post('/api/admin/login', (req, res) => {
+  if (!checkRateLimit(req, res)) return;
+
+  const { password } = req.body || {};
+  const inputPass = String(password || '').trim();
+  const validPasswords = getValidAdminPasswords();
+
+  if (inputPass && validPasswords.has(inputPass)) {
+    resetFailedAttempts(req);
+    const adminToken = `adm_${crypto.randomBytes(24).toString('base64url')}`;
+    activeAdminSessions.add(adminToken);
+    return res.json({ status: 200, isAdmin: true, adminToken });
+  }
+
+  recordFailedAttempt(req);
+  const record = loginAttempts.get(getClientIP(req));
+  const remaining = record ? Math.max(0, 5 - record.count) : 4;
+  return res.status(401).json({
+    status: 401,
+    isAdmin: false,
+    message: remaining > 0
+      ? `รหัสผ่านแอดมินไม่ถูกต้อง (เหลือโอกาสลองอีก ${remaining} ครั้งก่อนถูกบล็อก)`
+      : 'กรอกรหัสผิดเกิน 5 ครั้ง ระบบบล็อกการเข้าถึงเป็นเวลา 15 นาที'
+  });
 });
 
 // ==========================================
 // 0.1 TECHNICIAN AUTHENTICATION & MANAGEMENT
 // ==========================================
 app.post('/api/auth/login', (req, res) => {
+  if (!checkRateLimit(req, res)) return;
+
   const { employeeId } = req.body || {};
   if (!employeeId || !String(employeeId).trim()) {
     return res.status(400).json({ ok: false, error: 'กรุณากรอกรหัสพนักงาน' });
@@ -183,12 +340,18 @@ app.post('/api/auth/login', (req, res) => {
   const tech = (db.technicians || []).find(t => t.id && String(t.id).trim().toUpperCase() === cleanId);
 
   if (!tech || tech.active === false) {
+    recordFailedAttempt(req);
+    const record = loginAttempts.get(getClientIP(req));
+    const remaining = record ? Math.max(0, 5 - record.count) : 4;
     return res.status(401).json({
       ok: false,
-      error: 'ไม่พบรหัสพนักงานนี้ หรือสิทธิ์การใช้งานถูกยกเลิก (พ้นสภาพพนักงานแล้ว)'
+      error: remaining > 0
+        ? `ไม่พบรหัสพนักงานนี้ หรือพ้นสภาพแล้ว (เหลือโอกาสลองอีก ${remaining} ครั้ง)`
+        : 'กรอกรหัสผิดเกิน 5 ครั้ง ระบบบล็อกการเข้าถึงเป็นเวลา 15 นาที'
     });
   }
 
+  resetFailedAttempts(req);
   res.json({
     ok: true,
     user: {
@@ -215,11 +378,11 @@ app.get('/api/auth/verify', (req, res) => {
   });
 });
 
-app.get('/api/technicians', (req, res) => {
+app.get('/api/technicians', requireAdmin, (req, res) => {
   res.json({ ok: true, technicians: db.technicians || [] });
 });
 
-app.post('/api/technicians', (req, res) => {
+app.post('/api/technicians', requireAdmin, (req, res) => {
   const { id, name } = req.body || {};
   if (!id || !name) {
     return res.status(400).json({ ok: false, error: 'กรุณาระบุรหัสและชื่อพนักงาน' });
@@ -245,7 +408,7 @@ app.post('/api/technicians', (req, res) => {
   res.json({ ok: true, technicians: db.technicians });
 });
 
-app.delete('/api/technicians/:id', (req, res) => {
+app.delete('/api/technicians/:id', requireAdmin, (req, res) => {
   const id = String(req.params.id || '').trim().toUpperCase();
   if (!db.technicians) db.technicians = [];
 
@@ -259,7 +422,7 @@ app.delete('/api/technicians/:id', (req, res) => {
   res.status(404).json({ ok: false, error: 'ไม่พบรหัสพนักงานนี้' });
 });
 
-app.post('/api/technicians/sync', (req, res) => {
+app.post('/api/technicians/sync', requireAdmin, (req, res) => {
   const { technicians } = req.body || {};
   if (Array.isArray(technicians) && technicians.length > 0) {
     db.technicians = technicians.map(t => ({
@@ -296,10 +459,14 @@ app.get('/api/stream', (req, res) => {
 // ==========================================
 app.get('/api/init', (req, res) => {
   const localIPs = getLocalIPs();
+  const authHeader = req.headers['authorization'] || '';
+  const adminToken = authHeader.startsWith('Bearer adm_') ? authHeader.slice(7).trim() : '';
+  const isAdmin = isLocalOrInternal(req) || (adminToken && activeAdminSessions.has(adminToken));
+
   res.json({
     vapidPublicKey: db.vapidKeys.publicKey,
     channels: db.channels,
-    tokens: db.tokens,
+    tokens: isAdmin ? db.tokens : [], // Tokens only revealed to authenticated admins!
     notifications: db.notifications.slice(0, 100),
     subscriberCount: db.subscriptions.length,
     serverInfo: {
@@ -482,7 +649,7 @@ app.post('/notify', upload.single('imageFile'), handleNotify);
 // ==========================================
 // 5. CHANNELS & TOKENS MANAGEMENT ENDPOINTS
 // ==========================================
-app.post('/api/channels', (req, res) => {
+app.post('/api/channels', requireAdmin, (req, res) => {
   const { name, description, color } = req.body;
   if (!name || !name.trim()) {
     return res.status(400).json({ status: 400, message: 'กรุณาระบุชื่อห้องแจ้งเตือน' });
@@ -499,14 +666,18 @@ app.post('/api/channels', (req, res) => {
   res.json({ status: 200, channel: newChannel });
 });
 
-app.delete('/api/channels/:id', (req, res) => {
+app.delete('/api/channels/:id', requireAdmin, (req, res) => {
   const { id } = req.params;
   db.channels = db.channels.filter(c => c.id !== id);
   saveDB(db);
   res.json({ status: 200, message: 'Deleted channel' });
 });
 
-app.post('/api/tokens', (req, res) => {
+app.get('/api/tokens', requireAdmin, (req, res) => {
+  res.json({ status: 200, tokens: db.tokens || [] });
+});
+
+app.post('/api/tokens', requireAdmin, (req, res) => {
   const { name, channelId } = req.body;
   if (!name || !name.trim()) {
     return res.status(400).json({ status: 400, message: 'กรุณาตั้งชื่อ Token' });
@@ -527,7 +698,7 @@ app.post('/api/tokens', (req, res) => {
   res.json({ status: 200, token: newToken });
 });
 
-app.delete('/api/tokens/:id', (req, res) => {
+app.delete('/api/tokens/:id', requireAdmin, (req, res) => {
   const { id } = req.params;
   db.tokens = db.tokens.filter(t => t.id !== id);
   saveDB(db);
@@ -553,7 +724,7 @@ app.patch('/api/notifications/:id/status', (req, res) => {
   res.json({ status: 200, notification: notif });
 });
 
-app.delete('/api/notifications/:id', (req, res) => {
+app.delete('/api/notifications/:id', requireAdmin, (req, res) => {
   const { id } = req.params;
   db.notifications = db.notifications.filter(n => n.id !== id);
   saveDB(db);
@@ -561,7 +732,7 @@ app.delete('/api/notifications/:id', (req, res) => {
   res.json({ status: 200, message: 'Deleted' });
 });
 
-app.delete('/api/notifications', (req, res) => {
+app.delete('/api/notifications', requireAdmin, (req, res) => {
   db.notifications = [];
   saveDB(db);
   broadcastSSE('notifications_cleared', {});

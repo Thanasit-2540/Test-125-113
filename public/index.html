@@ -6,8 +6,14 @@
   <meta name="theme-color" content="#06C755" />
   <title>NotifyHub - ระบบแจ้งเตือนและแจกงาน (LINE Notify Alternative)</title>
   <link rel="manifest" href="/manifest.json" />
+  <meta name="apple-mobile-web-app-capable" content="yes" />
+  <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent" />
+  <meta name="apple-mobile-web-app-title" content="NotifyHub" />
   <link rel="icon" href="/icon-192.svg" type="image/svg+xml" />
-  <link rel="apple-touch-icon" href="/icon-192.svg" />
+  <link rel="apple-touch-icon" href="/icon-192.png" />
+  <link rel="apple-touch-icon" sizes="180x180" href="/icon-192.png" />
+  <link rel="apple-touch-icon" sizes="192x192" href="/icon-192.png" />
+  <link rel="apple-touch-icon" sizes="512x512" href="/icon-512.png" />
   <link href="https://fonts.googleapis.com/css2?family=Prompt:wght@300;400;500;600;700&display=swap" rel="stylesheet" />
   <style>
     :root {
@@ -538,7 +544,8 @@
       z-index: 200;
       padding: 16px;
     }
-    .modal-backdrop.open {
+    .modal-backdrop.open,
+    .modal-backdrop.active {
       display: flex;
     }
     .modal-card {
@@ -622,7 +629,7 @@
       <form onsubmit="handleEmployeeLogin(event)">
         <div class="form-group" style="margin-bottom: 16px; text-align: left;">
           <label class="form-label" style="font-size: 0.86rem; color: #cbd5e1;">รหัสพนักงาน (Employee ID)</label>
-          <input type="text" id="employeeIdInput" class="form-control" placeholder="เช่น 56877, 57145, 52B13..." style="font-size: 1.15rem; text-align: center; font-weight: 700; letter-spacing: 1.5px; padding: 13px;" required autofocus />
+          <input type="text" id="employeeIdInput" class="form-control" placeholder="เช่น 11111, 1A2B3..." style="font-size: 1.15rem; text-align: center; font-weight: 700; letter-spacing: 1.5px; padding: 13px;" required autofocus />
         </div>
         <div id="loginErrorMsg" style="display: none; background: rgba(239, 68, 68, 0.15); border: 1px solid rgba(239, 68, 68, 0.4); color: #fca5a5; padding: 11px 14px; border-radius: 10px; font-size: 0.86rem; margin-bottom: 16px; text-align: left; line-height: 1.5;"></div>
         <button type="submit" id="loginSubmitBtn" class="btn btn-primary" style="width: 100%; padding: 13px; font-size: 1.05rem; font-weight: 600;">
@@ -874,7 +881,7 @@
           <div style="font-weight: 600; font-size: 0.95rem; margin-bottom: 10px; color: #4ade80;">➕ เพิ่มช่าง / พนักงานใหม่</div>
           <div class="grid-2" style="gap: 12px; margin-bottom: 12px;">
             <div class="form-group" style="margin-bottom: 0;">
-              <label class="form-label">รหัสพนักงาน (ID เช่น 62001 หรือ 56877)</label>
+              <label class="form-label">รหัสพนักงาน (ID เช่น 11111 หรือ 1A2B3)</label>
               <input type="text" id="newTechId" class="form-control" placeholder="ระบุรหัสพนักงาน..." required />
             </div>
             <div class="form-group" style="margin-bottom: 0;">
@@ -1006,6 +1013,7 @@
       selectedBacklogFilter: 'all',
       soundEnabled: true,
       isAdmin: sessionStorage.getItem('notifyhub_admin') === 'true',
+      adminToken: sessionStorage.getItem('notifyhub_admin_token') || '',
       serverInfo: {}
     };
 
@@ -1162,9 +1170,24 @@
     // ==========================================
     // ADMIN TECHNICIAN MANAGEMENT
     // ==========================================
+    
+    async function loadAdminTokens() {
+      if (!state.isAdmin) return;
+      try {
+        const res = await fetch('/api/tokens', { headers: getAdminHeaders() });
+        const data = await res.json();
+        if (res.ok && data.tokens) {
+          state.tokens = data.tokens;
+          renderTokensList();
+          renderTokenSelects();
+          renderCodeExamples();
+        }
+      } catch (e) {}
+    }
+
     async function loadTechniciansList() {
       try {
-        const res = await fetch('/api/technicians');
+        const res = await fetch('/api/technicians', { headers: getAdminHeaders() });
         const data = await res.json();
         if (res.ok && data.technicians) {
           state.technicians = data.technicians;
@@ -1224,7 +1247,7 @@
       try {
         const res = await fetch('/api/technicians', {
           method: 'POST',
-          headers: { 'Content-Type': 'application/json' },
+          headers: getAdminHeaders(),
           body: JSON.stringify({ id, name })
         });
         const data = await res.json();
@@ -1247,7 +1270,7 @@
       }
 
       try {
-        const res = await fetch(`/api/technicians/${encodeURIComponent(id)}`, { method: 'DELETE' });
+        const res = await fetch(`/api/technicians/${encodeURIComponent(id)}`, { method: 'DELETE', headers: getAdminHeaders() });
         const data = await res.json();
         if (res.ok) {
           showToast('🗑️ ลบพนักงานสำเร็จ', `ลบ ${name} (${id}) ออกจากระบบแล้ว`);
@@ -1263,11 +1286,22 @@
       }
     }
 
+    
+    function getAdminHeaders() {
+      const token = state.adminToken || sessionStorage.getItem('notifyhub_admin_token') || '';
+      return {
+        'Content-Type': 'application/json',
+        'Authorization': token ? `Bearer ${token}` : ''
+      };
+    }
+
     function handleAdminBtnClick() {
       if (state.isAdmin) {
         if (confirm('ต้องการออกจากระบบแอดมินใช่หรือไม่?')) {
           state.isAdmin = false;
           sessionStorage.removeItem('notifyhub_admin');
+          sessionStorage.removeItem('notifyhub_admin_token');
+          state.adminToken = '';
           updateAdminUI();
           switchTab('feed', document.getElementById('tabBtnFeed'));
           showToast('🔒 ออกจากระบบแอดมินแล้ว', 'ซ่อนเมนูจัดการ Token และเชื่อมต่อ API แล้ว');
@@ -1293,25 +1327,23 @@
           headers: { 'Content-Type': 'application/json' },
           body: JSON.stringify({ password })
         });
-        if (res.ok) {
+        const data = await res.json();
+        if (res.ok && data.isAdmin) {
           state.isAdmin = true;
+          state.adminToken = data.adminToken || '';
           sessionStorage.setItem('notifyhub_admin', 'true');
+          sessionStorage.setItem('notifyhub_admin_token', state.adminToken);
           closeAdminModal();
           updateAdminUI();
-          showToast('👑 เข้าสู่ระบบแอดมินสำเร็จ', 'เปิดเมนูออก Token และโค้ดเชื่อมต่อ API แล้ว');
+          loadAdminTokens();
+          loadTechniciansList();
+          showToast('👑 เข้าสู่ระบบแอดมินสำเร็จ', 'เปิดเมนูจัดการ Token และรายชื่อช่างแล้ว');
           return;
         }
+        alert(data.message || 'รหัสผ่านแอดมินไม่ถูกต้อง!');
       } catch (err) {
-        if (password === 'Thanasit') {
-          state.isAdmin = true;
-          sessionStorage.setItem('notifyhub_admin', 'true');
-          closeAdminModal();
-          updateAdminUI();
-          showToast('👑 เข้าสู่ระบบแอดมินสำเร็จ', 'เปิดเมนูออก Token และโค้ดเชื่อมต่อ API แล้ว');
-          return;
-        }
+        alert('ไม่สามารถเชื่อมต่อกับเซิร์ฟเวอร์เพื่อตรวจสอบรหัสได้');
       }
-      alert('รหัสผ่านแอดมินไม่ถูกต้อง!');
     }
 
     function updateAdminUI() {
@@ -1326,6 +1358,7 @@
       });
       if (state.isAdmin) {
         loadTechniciansList();
+        loadAdminTokens();
       }
       renderNotifications();
     }
@@ -1789,12 +1822,12 @@ print(r.json())`;
     }
 
     async function deleteNotification(id) {
-      await fetch(`/api/notifications/${id}`, { method: 'DELETE' });
+      await fetch(`/api/notifications/${id}`, { method: 'DELETE', headers: getAdminHeaders() });
     }
 
     async function clearAllNotifications() {
       if (!confirm('ต้องการล้างประวัติการแจ้งเตือนทั้งหมดใช่หรือไม่?')) return;
-      await fetch('/api/notifications', { method: 'DELETE' });
+      await fetch('/api/notifications', { method: 'DELETE', headers: getAdminHeaders() });
     }
 
     async function createToken(e) {
@@ -1803,7 +1836,7 @@ print(r.json())`;
       const channelId = document.getElementById('newTokenChannel').value;
       const res = await fetch('/api/tokens', {
         method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
+        headers: getAdminHeaders(),
         body: JSON.stringify({ name, channelId })
       });
       const data = await res.json();
@@ -1817,7 +1850,7 @@ print(r.json())`;
 
     async function deleteToken(id) {
       if (!confirm('ยืนยันการยกเลิก Token นี้?')) return;
-      await fetch(`/api/tokens/${id}`, { method: 'DELETE' });
+      await fetch(`/api/tokens/${id}`, { method: 'DELETE', headers: getAdminHeaders() });
       state.tokens = state.tokens.filter(t => t.id !== id);
       renderAll();
     }
@@ -1829,7 +1862,7 @@ print(r.json())`;
       const description = document.getElementById('newChannelDesc').value;
       const res = await fetch('/api/channels', {
         method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
+        headers: getAdminHeaders(),
         body: JSON.stringify({ name, color, description })
       });
       const data = await res.json();
@@ -1844,7 +1877,7 @@ print(r.json())`;
 
     async function deleteChannel(id) {
       if (!confirm('ยืนยันการลบห้องแจ้งเตือนนี้?')) return;
-      await fetch(`/api/channels/${id}`, { method: 'DELETE' });
+      await fetch(`/api/channels/${id}`, { method: 'DELETE', headers: getAdminHeaders() });
       state.channels = state.channels.filter(c => c.id !== id);
       renderAll();
     }
@@ -1985,7 +2018,8 @@ print(r.json())`;
     }
 
     function isIOSDevice() {
-      return /iphone|ipad|ipod/i.test(navigator.userAgent);
+      return /iphone|ipad|ipod/i.test(navigator.userAgent) || 
+        (navigator.platform === 'MacIntel' && navigator.maxTouchPoints > 1);
     }
 
     function isInAppBrowser() {
@@ -2049,12 +2083,18 @@ print(r.json())`;
         if (directWrap) directWrap.style.display = deferredPrompt ? 'block' : 'none';
       }
 
-      if (modal) modal.classList.add('active');
+      if (modal) {
+        modal.classList.add('open');
+        modal.classList.add('active');
+      }
     }
 
     function closeInstallGuideModal() {
       const modal = document.getElementById('modalInstallGuide');
-      if (modal) modal.classList.remove('active');
+      if (modal) {
+        modal.classList.remove('open');
+        modal.classList.remove('active');
+      }
     }
 
     function dismissMobileBanner() {
