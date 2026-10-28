@@ -554,6 +554,14 @@ function matchAssigneeServer(assigneeStr, sub) {
   // Admin devices always receive all dispatches
   if (sub.role === 'admin') return true;
 
+  // If this task is waiting for admin ("รอแอดมินมอบหมาย" / "แอดมิน"):
+  // Deliver to all admin devices AND unassigned/anonymous devices (so admin receives even if not logged in with PIN)
+  const isPendingAdmin = String(assigneeStr).includes('แอดมิน') || String(assigneeStr).includes('admin');
+  if (isPendingAdmin) {
+    if (sub.role === 'admin' || !sub.userId || sub.role === 'anonymous') return true;
+    return false; // exclude specific technicians
+  }
+
   const uid = String(sub.userId || '').trim().toLowerCase();
   const uname = String(sub.userName || '').trim().toLowerCase();
   
@@ -649,6 +657,7 @@ async function handleNotify(req, res) {
       taskStatus: isTask ? (req.body.taskStatus || 'pending') : null,
       image: imageUrl,
       url: req.body.url || null,
+      metadata: req.body.metadata || null,
       createdAt: new Date().toISOString()
     };
 

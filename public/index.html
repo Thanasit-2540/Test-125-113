@@ -793,12 +793,12 @@
           <div class="card-title">📋 รายการงานแจ้งซ่อม (แยกตามประเภทงาน: ไฟฟ้า / แอร์)</div>
           <div id="backlogSummaryBadges" style="display:flex; gap:8px; flex-wrap:wrap;"></div>
         </div>
-        <!-- Scope Bar: งานของฉัน vs งานทั้งหมด -->
-        <div class="scope-bar">
-          <button class="scope-btn active" id="backlogScopeBtnMine" onclick="setBacklogTaskScope('mine')">
-            ⭐ งานของฉัน (<span id="myBacklogScopeCount">0</span>)
+        <!-- Scope Bar: งานของฉัน/งานรอมอบหมาย vs งานทั้งหมด -->
+        <div class="scope-bar" id="backlogScopeBar">
+          <button class="scope-btn" id="backlogScopeBtnMine" onclick="setBacklogTaskScope('mine')">
+            <span id="myBacklogScopeLabel">⭐ งานของฉัน</span> (<span id="myBacklogScopeCount">0</span>)
           </button>
-          <button class="scope-btn" id="backlogScopeBtnAll" onclick="setBacklogTaskScope('all')">
+          <button class="scope-btn active" id="backlogScopeBtnAll" onclick="setBacklogTaskScope('all')">
             🌐 งานทั้งหมด (<span id="allBacklogScopeCount">0</span>)
           </button>
         </div>
@@ -1057,19 +1057,23 @@
   <div id="toast-container"></div>
 
   <script>
+    const savedIsAdmin = (sessionStorage.getItem('adda_admin') || sessionStorage.getItem('notifyhub_admin')) === 'true';
+    const savedUser = JSON.parse(localStorage.getItem('adda_user') || localStorage.getItem('notifyhub_user') || 'null');
+    const isActualAdmin = savedIsAdmin || (savedUser && (savedUser.role === 'admin' || savedUser.id === 'ADMIN'));
+
     let state = {
       vapidPublicKey: '',
       channels: [],
       tokens: [],
       notifications: [],
       technicians: [],
-      currentUser: JSON.parse(localStorage.getItem('adda_user') || localStorage.getItem('notifyhub_user') || 'null'),
-      taskScope: 'mine',           // 'mine' | 'all'
-      backlogTaskScope: 'mine',    // 'mine' | 'all'
+      currentUser: savedUser,
+      taskScope: isActualAdmin ? 'all' : 'mine',           // Admin defaults to 'all', Tech defaults to 'mine'
+      backlogTaskScope: isActualAdmin ? 'all' : 'mine',    // Admin defaults to 'all', Tech defaults to 'mine'
       selectedChannel: 'all',
       selectedBacklogFilter: 'all',
       soundEnabled: true,
-      isAdmin: (sessionStorage.getItem('adda_admin') || sessionStorage.getItem('notifyhub_admin')) === 'true',
+      isAdmin: isActualAdmin,
       adminToken: sessionStorage.getItem('adda_admin_token') || sessionStorage.getItem('notifyhub_admin_token') || '',
       serverInfo: {}
     };
@@ -1226,9 +1230,9 @@
     function isAssignedToCurrentUser(item, user = state.currentUser) {
       if (!user || !user.id) return true;
 
-      // If user is Admin and task is pending admin review, show in Admin's scope
-      if (state.isAdmin && (item.taskStatus === 'pending_admin' || (item.title || '').includes('[รอแอดมินพิจารณา]'))) {
-        return true;
+      // If user is Admin, unmatched tasks (pending admin) belong to admin's attention scope
+      if (state.isAdmin || user.role === 'admin' || user.id === 'ADMIN') {
+        return item.taskStatus === 'pending_admin' || (item.title || '').includes('[รอแอดมินพิจารณา]');
       }
 
       // 1. If task has assignee, strictly match against assignee field only!
@@ -1868,57 +1872,74 @@
       if (allBacklog.length === 0 && state.notifications.length > 0) {
         allBacklog = state.notifications;
       }
-      const myBacklogCount = allBacklog.filter(n => isAssignedToCurrentUser(n)).length;
+
+      // Count pending admin (unmatched tasks)
+      const pendingAdminCount = allBacklog.filter(n => n.taskStatus === 'pending_admin' || (n.title || '').includes('[รอแอดมินพิจารณา]')).length;
+      const myBacklogCount = state.isAdmin ? pendingAdminCount : allBacklog.filter(n => isAssignedToCurrentUser(n)).length;
 
       const myBacklogScopeSpan = document.getElementById('myBacklogScopeCount');
       const allBacklogScopeSpan = document.getElementById('allBacklogScopeCount');
       if (myBacklogScopeSpan) myBacklogScopeSpan.textContent = myBacklogCount;
       if (allBacklogScopeSpan) allBacklogScopeSpan.textContent = allBacklog.length;
 
-      let baseList = allBacklog;
-      if (state.backlogTaskScope === 'mine' && state.currentUser) {
-        baseList = baseList.filter(n => isAssignedToCurrentUser(n));
+      const myScopeLabel = document.getElementById('myBacklogScopeLabel');
+      if (myScopeLabel) {
+        myScopeLabel.textContent = state.isAdmin ? '⭐ งานรอมอบหมาย' : '⭐ งานของฉัน';
       }
 
-      const elecJobs = baseList.filter(n => (n.channelName || '').includes('ไฟฟ้า') || (n.title || '').includes('[ไฟฟ้า]'));
-      const airJobs = baseList.filter(n => (n.channelName || '').includes('แอร์') || (n.title || '').includes('[แอร์]'));
+      // Toggle active states on scope buttons
+      document.getElementById('backlogScopeBtnMine')?.classList.toggle('active', state.backlogTaskScope === 'mine');
+      document.getElementById('backlogScopeBtnAll')?.classList.toggle('active', state.backlogTaskScope === 'all');
+
+      let baseList = allBacklog;
+      if (state.backlogTaskScope === 'mine') {
+        if (state.isAdmin) {
+          // For Admin: starred tasks = unmatched tasks waiting for admin decision!
+          baseList = allBacklog.filter(n => n.taskStatus === 'pending_admin' || (n.title || '').includes('[รอแอดมินพิจารณา]'));
+        } else if (state.currentUser) {
+          baseList = baseList.filter(n => isAssignedToCurrentUser(n));
+        }
+      }
+
+      // Counts for summary pills and chips (always calculated from allBacklog so numbers are complete)
+      const elecJobsTotal = allBacklog.filter(n => (n.channelName || '').includes('ไฟฟ้า') || (n.title || '').includes('[ไฟฟ้า]'));
+      const airJobsTotal = allBacklog.filter(n => (n.channelName || '').includes('แอร์') || (n.title || '').includes('[แอร์]'));
+      const pendingAdminTotal = allBacklog.filter(n => n.taskStatus === 'pending_admin' || (n.title || '').includes('[รอแอดมินพิจารณา]'));
+      const overdueTotal = allBacklog.filter(n => n.priority === 'urgent');
+      const normalTotal = allBacklog.filter(n => n.priority !== 'urgent');
 
       const badgeEl = document.getElementById('backlogCountBadge');
-      if (badgeEl) badgeEl.textContent = state.backlogTaskScope === 'mine' ? myBacklogCount : allBacklog.length;
+      if (badgeEl) badgeEl.textContent = allBacklog.length;
 
       const elecSpan = document.getElementById('elecCountSpan');
-      if (elecSpan) elecSpan.textContent = elecJobs.length;
+      if (elecSpan) elecSpan.textContent = elecJobsTotal.length;
 
       const airSpan = document.getElementById('airCountSpan');
-      if (airSpan) airSpan.textContent = airJobs.length;
+      if (airSpan) airSpan.textContent = airJobsTotal.length;
 
-      const pendingAdminJobs = baseList.filter(n => n.taskStatus === 'pending_admin' || (n.title || '').includes('[รอแอดมินพิจารณา]'));
       const pendingAdminSpan = document.getElementById('pendingAdminCountSpan');
-      if (pendingAdminSpan) pendingAdminSpan.textContent = pendingAdminJobs.length;
-
-      const overdueCount = baseList.filter(n => n.priority === 'urgent').length;
-      const normalCount = baseList.length - overdueCount;
+      if (pendingAdminSpan) pendingAdminSpan.textContent = pendingAdminTotal.length;
 
       const summaryEl = document.getElementById('backlogSummaryBadges');
       if (summaryEl) {
         summaryEl.innerHTML = `
-          <span class="pill" style="background:rgba(245,158,11,0.2);color:#fcd34d;">⚡ ไฟฟ้า ${elecJobs.length} งาน</span>
-          <span class="pill" style="background:rgba(6,182,212,0.2);color:#67e8f9;">❄️ แอร์ ${airJobs.length} งาน</span>
-          ${pendingAdminJobs.length > 0 ? `<span class="pill" style="background:rgba(239,68,68,0.25);color:#fca5a5;border:1px solid rgba(239,68,68,0.5);font-weight:700;">⚠️ รอมอบหมาย ${pendingAdminJobs.length} งาน</span>` : ''}
-          <span class="pill pill-urgent">🔴 เกินกำหนด ${overdueCount} งาน</span>
-          <span class="pill" style="background:rgba(6,199,85,0.2);color:#4ade80;">🟢 อยู่ในกำหนด ${normalCount} งาน</span>
+          <span class="pill" style="background:rgba(245,158,11,0.2);color:#fcd34d;">⚡ ไฟฟ้า ${elecJobsTotal.length} งาน</span>
+          <span class="pill" style="background:rgba(6,182,212,0.2);color:#67e8f9;">❄️ แอร์ ${airJobsTotal.length} งาน</span>
+          ${pendingAdminTotal.length > 0 ? `<span class="pill" style="background:rgba(239,68,68,0.25);color:#fca5a5;border:1px solid rgba(239,68,68,0.5);font-weight:700;">⚠️ รอมอบหมาย ${pendingAdminTotal.length} งาน</span>` : ''}
+          <span class="pill pill-urgent">🔴 เกินกำหนด ${overdueTotal.length} งาน</span>
+          <span class="pill" style="background:rgba(6,199,85,0.2);color:#4ade80;">🟢 อยู่ในกำหนด ${normalTotal.length} งาน</span>
         `;
       }
 
       let filtered = baseList;
       if (state.selectedBacklogFilter === 'elec') {
-        filtered = elecJobs;
+        filtered = baseList.filter(n => (n.channelName || '').includes('ไฟฟ้า') || (n.title || '').includes('[ไฟฟ้า]'));
       } else if (state.selectedBacklogFilter === 'air') {
-        filtered = airJobs;
+        filtered = baseList.filter(n => (n.channelName || '').includes('แอร์') || (n.title || '').includes('[แอร์]'));
       } else if (state.selectedBacklogFilter === 'pending_admin') {
-        filtered = pendingAdminJobs;
+        filtered = baseList.filter(n => n.taskStatus === 'pending_admin' || (n.title || '').includes('[รอแอดมินพิจารณา]'));
       } else if (state.selectedBacklogFilter === 'overdue') {
-        filtered = allBacklog.filter(n => n.priority === 'urgent');
+        filtered = baseList.filter(n => n.priority === 'urgent');
       }
 
       const listEl = document.getElementById('backlogList');

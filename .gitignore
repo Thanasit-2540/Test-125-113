@@ -1,0 +1,30 @@
+# ==========================================
+# ไม่เกี่ยวกับหน้าเว็บ (ระบบบอทบนคอม & ฐานข้อมูลโรงงาน)
+# ==========================================
+BotControlCenter*
+SqlBridge*
+bot_daemon.js
+sync_backlog*
+open_service_care.ps1
+test_accept*
+MakeIcons*
+start.bat
+push_to_github.bat
+app.ico
+*.exe
+*.lnk
+*.log
+out.log
+err.log
+
+# ==========================================
+# ความปลอดภัย & ข้อมูลระบบ (ห้ามอัปโหลด)
+# ==========================================
+node_modules/
+Password/
+.env
+*.pem
+data/
+public/uploads/
+1.jfif
+master_icon.png
