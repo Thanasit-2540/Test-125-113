@@ -1,0 +1,52 @@
+{
+  "pollIntervalSec": 60,
+  "estimateDays": 7,
+  "factoryUser": "THANASIT",
+  "factoryReceiverName": "คุณธนสิทธิ์   น้อยวัฒน์",
+  "renderUrl": "https://powerenergy-rfik.onrender.com",
+  "localUrl": "http://localhost:3000",
+  "keepRenderAwake": true,
+  "runLocalServer": true,
+  "elecEnabled": true,
+  "elecTechRules": [
+    {
+      "enabled": true,
+      "id": "56877",
+      "name": "นาย มี",
+      "keywords": "หลอดไฟ, หลอดไป, ปลั๊ก, ลำโพง, ป้ายไฟ, โทรทัศน์, สวิตช์, เครื่องกระจายเสียง, เครื่องเสียง, แอร์"
+    },
+    {
+      "enabled": true,
+      "id": "57145",
+      "name": "นาย พิวพิว",
+      "keywords": "หลอดไฟ, หลอดไป, ปลั๊ก, ลำโพง, ป้ายไฟ, โทรทัศน์, สวิตช์, เครื่องกระจายเสียง, เครื่องเสียง, แอร์"
+    },
+    {
+      "enabled": true,
+      "id": "52B13",
+      "name": "นาย กิตติพงษ์ ศรีโยธา",
+      "keywords": "โทรศัพท์"
+    },
+    {
+      "enabled": false,
+      "id": "51061",
+      "name": "นาย อาทิตย์ บ้วนนอก",
+      "keywords": "หลอดไฟ, ปลั๊ก"
+    }
+  ],
+  "airEnabled": false,
+  "airTechRules": [
+    {
+      "enabled": true,
+      "id": "51061",
+      "name": "นาย อาทิตย์ บ้วนนอก",
+      "keywords": "แอร์, น้ำหยด, ไม่เย็น, ล้างแอร์, คอมเพรสเซอร์, *"
+    },
+    {
+      "enabled": true,
+      "id": "61B47",
+      "name": "นาย ศิวกร วงค์ครองศักดิ์",
+      "keywords": "แอร์, น้ำหยด, ไม่เย็น, ล้างแอร์, คอมเพรสเซอร์, *"
+    }
+  ]
+}

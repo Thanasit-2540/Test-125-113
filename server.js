@@ -35,9 +35,11 @@ app.use(express.static(path.join(__dirname, 'public')));
 
 // Load or initialize database
 function loadDB() {
+  let data;
   if (fs.existsSync(DB_FILE)) {
     try {
-      return JSON.parse(fs.readFileSync(DB_FILE, 'utf8'));
+      const raw = fs.readFileSync(DB_FILE, 'utf8').replace(/^\uFEFF/, '').trim();
+      data = JSON.parse(raw);
     } catch (err) {
       console.error('Error reading DB file, initializing fresh DB:', err);
     }
@@ -56,24 +58,17 @@ function loadDB() {
     vapidKeys,
     channels: [
       {
-        id: 'ch_default',
-        name: 'แจ้งเตือนทั่วไป (General)',
-        description: 'ห้องหลักสำหรับรับการแจ้งเตือนทุกระบบ',
-        color: '#06C755',
+        id: 'ch_1793091370273',
+        name: '⚡ งานค้างซ่อม: ไฟฟ้า',
+        description: 'รายการงานค้างซ่อมหมวดไฟฟ้า/โทรศัพท์',
+        color: '#F59E0B',
         createdAt: now
       },
       {
-        id: 'ch_tasks',
-        name: 'ระบบแจกงาน (Task Dispatch)',
-        description: 'แจ้งเตือนเมื่อมีงานใหม่มอบหมายให้ทีมงาน',
-        color: '#3B82F6',
-        createdAt: now
-      },
-      {
-        id: 'ch_urgent',
-        name: 'แจ้งเตือนด่วน (Urgent Alert)',
-        description: 'แจ้งเตือนระดับวิกฤตหรือเร่งด่วนพิเศษ',
-        color: '#EF4444',
+        id: 'ch_1793091370293',
+        name: '❄️ งานค้างซ่อม: แอร์',
+        description: 'รายการงานค้างซ่อมหมวดแอร์ (เครื่องปรับอากาศ)',
+        color: '#06B6D4',
         createdAt: now
       }
     ],
@@ -82,60 +77,42 @@ function loadDB() {
         id: 'tok_demo_1',
         name: 'Token ทดสอบระบบแจกงาน',
         token: 'NOTIFY-TASK-2026-DEMO',
-        channelId: 'ch_tasks',
-        createdAt: now,
-        lastUsedAt: null,
-        usageCount: 1
-      },
-      {
-        id: 'tok_demo_2',
-        name: 'Token แจ้งเตือนทั่วไป',
-        token: 'NOTIFY-GENERAL-2026',
-        channelId: 'ch_default',
+        channelId: 'ch_1793091370273',
         createdAt: now,
         lastUsedAt: null,
         usageCount: 1
       }
     ],
     subscriptions: [],
-    notifications: [
-      {
-        id: 'notif_welcome_1',
-        channelId: 'ch_tasks',
-        channelName: 'ระบบแจกงาน (Task Dispatch)',
-        channelColor: '#3B82F6',
-        tokenName: 'Token ทดสอบระบบแจกงาน',
-        title: '📋 งานใหม่: ตรวจสอบระบบแจ้งเตือน',
-        message: 'มอบหมายงานให้ตรวจสอบการเด้งแจ้งเตือนผ่านระบบ Notify ใหม่ ทดแทน LINE Notify เดิม',
-        priority: 'high',
-        assignee: 'ทีมพัฒนา',
-        isTask: true,
-        taskStatus: 'pending',
-        image: null,
-        url: null,
-        createdAt: now
-      },
-      {
-        id: 'notif_welcome_2',
-        channelId: 'ch_default',
-        channelName: 'แจ้งเตือนทั่วไป (General)',
-        channelColor: '#06C755',
-        tokenName: 'Token แจ้งเตือนทั่วไป',
-        title: '🚀 ระบบ Notify พร้อมใช้งานแล้ว!',
-        message: 'ยินดีต้อนรับสู่ระบบแจ้งเตือนส่วนตัวของคุณ สามารถกดที่เมนู "ทดสอบยิงแจ้งเตือน" เพื่อลองส่งข้อความแรกได้ทันที',
-        priority: 'normal',
-        assignee: null,
-        isTask: false,
-        taskStatus: null,
-        image: null,
-        url: null,
-        createdAt: now
-      }
-    ]
+    notifications: [],
+    technicians: []
   };
 
-  saveDB(initialDB);
-  return initialDB;
+  if (!data) data = initialDB;
+
+  // Ensure technicians list is seeded
+  if (!data.technicians || data.technicians.length === 0) {
+    const TECH_SEED_FILE = path.join(DATA_DIR, 'technicians.json');
+    if (fs.existsSync(TECH_SEED_FILE)) {
+      try {
+        const seedRaw = fs.readFileSync(TECH_SEED_FILE, 'utf8').replace(/^\uFEFF/, '').trim();
+        const seed = JSON.parse(seedRaw);
+        data.technicians = seed.technicians || [];
+      } catch (e) {}
+    }
+    if (!data.technicians || data.technicians.length === 0) {
+      data.technicians = [
+        { id: '56877', name: 'นาย มี', role: 'technician', active: true },
+        { id: '57145', name: 'นาย พิวพิว', role: 'technician', active: true },
+        { id: '52B13', name: 'นาย กิตติพงษ์ ศรีโยธา', role: 'technician', active: true },
+        { id: '51061', name: 'นาย อาทิตย์ บ้วนนอก', role: 'technician', active: true },
+        { id: '61B47', name: 'นาย ศิวกร วงค์ครองศักดิ์', role: 'technician', active: true }
+      ];
+    }
+    saveDB(data);
+  }
+
+  return data;
 }
 
 function saveDB(data) {
@@ -191,6 +168,110 @@ app.post('/api/admin/login', (req, res) => {
     return res.json({ status: 200, isAdmin: true });
   }
   return res.status(401).json({ status: 401, isAdmin: false, message: 'รหัสผ่านแอดมินไม่ถูกต้อง' });
+});
+
+// ==========================================
+// 0.1 TECHNICIAN AUTHENTICATION & MANAGEMENT
+// ==========================================
+app.post('/api/auth/login', (req, res) => {
+  const { employeeId } = req.body || {};
+  if (!employeeId || !String(employeeId).trim()) {
+    return res.status(400).json({ ok: false, error: 'กรุณากรอกรหัสพนักงาน' });
+  }
+
+  const cleanId = String(employeeId).trim().toUpperCase();
+  const tech = (db.technicians || []).find(t => t.id && String(t.id).trim().toUpperCase() === cleanId);
+
+  if (!tech || tech.active === false) {
+    return res.status(401).json({
+      ok: false,
+      error: 'ไม่พบรหัสพนักงานนี้ หรือสิทธิ์การใช้งานถูกยกเลิก (พ้นสภาพพนักงานแล้ว)'
+    });
+  }
+
+  res.json({
+    ok: true,
+    user: {
+      id: tech.id,
+      name: tech.name,
+      role: tech.role || 'technician'
+    }
+  });
+});
+
+app.get('/api/auth/verify', (req, res) => {
+  const id = String(req.query.id || '').trim().toUpperCase();
+  if (!id) return res.json({ ok: false, active: false });
+
+  const tech = (db.technicians || []).find(t => t.id && String(t.id).trim().toUpperCase() === id);
+  if (!tech || tech.active === false) {
+    return res.json({ ok: false, active: false, error: 'พ้นสภาพพนักงานแล้ว' });
+  }
+
+  res.json({
+    ok: true,
+    active: true,
+    user: { id: tech.id, name: tech.name, role: tech.role || 'technician' }
+  });
+});
+
+app.get('/api/technicians', (req, res) => {
+  res.json({ ok: true, technicians: db.technicians || [] });
+});
+
+app.post('/api/technicians', (req, res) => {
+  const { id, name } = req.body || {};
+  if (!id || !name) {
+    return res.status(400).json({ ok: false, error: 'กรุณาระบุรหัสและชื่อพนักงาน' });
+  }
+
+  const cleanId = String(id).trim().toUpperCase();
+  if (!db.technicians) db.technicians = [];
+
+  const existing = db.technicians.find(t => t.id && String(t.id).trim().toUpperCase() === cleanId);
+  if (existing) {
+    existing.name = String(name).trim();
+    existing.active = true;
+  } else {
+    db.technicians.push({
+      id: cleanId,
+      name: String(name).trim(),
+      role: 'technician',
+      active: true
+    });
+  }
+
+  saveDB(db);
+  res.json({ ok: true, technicians: db.technicians });
+});
+
+app.delete('/api/technicians/:id', (req, res) => {
+  const id = String(req.params.id || '').trim().toUpperCase();
+  if (!db.technicians) db.technicians = [];
+
+  const idx = db.technicians.findIndex(t => t.id && String(t.id).trim().toUpperCase() === id);
+  if (idx >= 0) {
+    const deleted = db.technicians.splice(idx, 1)[0];
+    saveDB(db);
+    return res.json({ ok: true, message: `ลบพนักงาน ${deleted.name} (${deleted.id}) เรียบร้อยแล้ว`, technicians: db.technicians });
+  }
+
+  res.status(404).json({ ok: false, error: 'ไม่พบรหัสพนักงานนี้' });
+});
+
+app.post('/api/technicians/sync', (req, res) => {
+  const { technicians } = req.body || {};
+  if (Array.isArray(technicians) && technicians.length > 0) {
+    db.technicians = technicians.map(t => ({
+      id: String(t.id).trim(),
+      name: String(t.name).trim(),
+      role: 'technician',
+      active: t.active !== false
+    }));
+    saveDB(db);
+    return res.json({ ok: true, count: db.technicians.length });
+  }
+  res.status(400).json({ ok: false, error: 'Invalid technicians array' });
 });
 
 // ==========================================
@@ -420,9 +501,6 @@ app.post('/api/channels', (req, res) => {
 
 app.delete('/api/channels/:id', (req, res) => {
   const { id } = req.params;
-  if (id === 'ch_default') {
-    return res.status(400).json({ status: 400, message: 'ไม่สามารถลบห้องเริ่มต้นได้' });
-  }
   db.channels = db.channels.filter(c => c.id !== id);
   saveDB(db);
   res.json({ status: 200, message: 'Deleted channel' });

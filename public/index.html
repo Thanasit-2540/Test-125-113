@@ -551,9 +551,95 @@
       box-shadow: 0 20px 50px rgba(0,0,0,0.5);
       animation: slideIn 0.2s ease-out;
     }
+
+    /* Login Overlay for Technicians */
+    .login-overlay {
+      position: fixed;
+      inset: 0;
+      background: rgba(15, 23, 42, 0.97);
+      backdrop-filter: blur(16px);
+      z-index: 10000;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      padding: 20px;
+    }
+    .login-card {
+      background: var(--bg-card);
+      border: 1px solid rgba(255, 255, 255, 0.12);
+      box-shadow: 0 25px 60px rgba(0, 0, 0, 0.7);
+      border-radius: 20px;
+      width: 100%;
+      max-width: 440px;
+      padding: 34px 28px;
+      text-align: center;
+      animation: slideIn 0.3s ease-out;
+    }
+    .scope-bar {
+      display: flex;
+      background: rgba(255, 255, 255, 0.05);
+      padding: 5px;
+      border-radius: 12px;
+      gap: 8px;
+      margin-bottom: 14px;
+      border: 1px solid var(--border);
+    }
+    .scope-btn {
+      flex: 1;
+      padding: 9px 14px;
+      border-radius: 9px;
+      border: 1px solid transparent;
+      background: transparent;
+      color: var(--text-muted);
+      font-size: 0.9rem;
+      font-weight: 500;
+      cursor: pointer;
+      transition: all 0.15s;
+    }
+    .scope-btn:hover {
+      background: rgba(255, 255, 255, 0.08);
+      color: #fff;
+    }
+    .scope-btn.active {
+      background: var(--primary);
+      color: #fff;
+      font-weight: 600;
+      box-shadow: 0 2px 10px rgba(6, 199, 85, 0.35);
+    }
+
   </style>
 </head>
 <body>
+
+  <!-- Technician Login Overlay (Full-screen gatekeeper) -->
+  <div id="loginOverlay" class="login-overlay" style="display: none;">
+    <div class="login-card">
+      <div style="font-size: 3.2rem; margin-bottom: 12px;">👷</div>
+      <h2 style="font-size: 1.35rem; font-weight: 700; margin-bottom: 6px;">ระบบแจ้งเตือน & รับงาน NotifyHub</h2>
+      <p style="font-size: 0.88rem; color: var(--text-muted); margin-bottom: 22px;">
+        กรุณาระบุรหัสพนักงานของคุณ เพื่อเข้าดูงานที่ได้รับมอบหมาย
+      </p>
+      <form onsubmit="handleEmployeeLogin(event)">
+        <div class="form-group" style="margin-bottom: 16px; text-align: left;">
+          <label class="form-label" style="font-size: 0.86rem; color: #cbd5e1;">รหัสพนักงาน (Employee ID)</label>
+          <input type="text" id="employeeIdInput" class="form-control" placeholder="เช่น 56877, 57145, 52B13..." style="font-size: 1.15rem; text-align: center; font-weight: 700; letter-spacing: 1.5px; padding: 13px;" required autofocus />
+        </div>
+        <div id="loginErrorMsg" style="display: none; background: rgba(239, 68, 68, 0.15); border: 1px solid rgba(239, 68, 68, 0.4); color: #fca5a5; padding: 11px 14px; border-radius: 10px; font-size: 0.86rem; margin-bottom: 16px; text-align: left; line-height: 1.5;"></div>
+        <button type="submit" id="loginSubmitBtn" class="btn btn-primary" style="width: 100%; padding: 13px; font-size: 1.05rem; font-weight: 600;">
+          🚀 เข้าสู่ระบบรับงาน
+        </button>
+      </form>
+      <div style="margin-top: 22px; font-size: 0.8rem; color: var(--text-muted); line-height: 1.6; border-top: 1px solid rgba(255,255,255,0.08); padding-top: 14px; text-align: left;">
+        💡 <strong>ตัวอย่างรหัสพนักงานทดสอบ:</strong><br />
+        • <code style="color: #4ade80; user-select: all; cursor: pointer;" onclick="document.getElementById('employeeIdInput').value='56877'">56877</code> (นาย มี)<br />
+        • <code style="color: #4ade80; user-select: all; cursor: pointer;" onclick="document.getElementById('employeeIdInput').value='57145'">57145</code> (นาย พิวพิว)<br />
+        • <code style="color: #4ade80; user-select: all; cursor: pointer;" onclick="document.getElementById('employeeIdInput').value='52B13'">52B13</code> (นาย กิตติพงษ์ ศรีโยธา)<br />
+        • <code style="color: #4ade80; user-select: all; cursor: pointer;" onclick="document.getElementById('employeeIdInput').value='51061'">51061</code> (นาย อาทิตย์ บ้วนนอก)<br />
+        • <code style="color: #4ade80; user-select: all; cursor: pointer;" onclick="document.getElementById('employeeIdInput').value='61B47'">61B47</code> (นาย ศิวกร วงค์ครองศักดิ์)
+      </div>
+    </div>
+  </div>
+
 
   <!-- Top Header -->
   <header class="header">
@@ -574,6 +660,13 @@
       </div>
 
       <div class="header-actions">
+        <div id="userProfileHeader" style="display: none; align-items: center; gap: 8px; background: rgba(255, 255, 255, 0.08); padding: 5px 12px; border-radius: 999px; border: 1px solid var(--border);">
+          <span style="font-size: 0.86rem; font-weight: 600; color: #f8fafc;" id="userNameDisplay">👷 ช่าง: -</span>
+          <button class="btn btn-outline btn-sm" onclick="handleLogout()" style="padding: 2px 8px; font-size: 0.75rem; border-color: rgba(239, 68, 68, 0.4); color: #fca5a5;">🚪 ออกจากระบบ</button>
+        </div>
+        <button class="btn btn-outline btn-sm" id="btnInstallApp" onclick="triggerDirectInstallOrModal()" style="border-color: #06C755; color: #4ade80; background: rgba(6, 199, 85, 0.12); font-weight: 600;">
+          📲 ติดตั้งแอพลงมือถือ
+        </button>
         <button class="btn btn-outline btn-sm" id="soundToggleBtn" onclick="toggleSound()">
           🔊 เสียงเตือน: เปิด
         </button>
@@ -610,7 +703,93 @@
     </div>
   </div>
 
+  <!-- Install Guide Modal -->
+  <div class="modal-backdrop" id="modalInstallGuide">
+    <div class="modal-card" style="max-width: 480px;">
+      <div class="card-header" style="margin-bottom: 12px;">
+        <div class="card-title">📱 ติดตั้ง NotifyHub ลงบนมือถือ</div>
+        <button class="btn btn-outline btn-sm" onclick="closeInstallGuideModal()">✕</button>
+      </div>
+
+      <!-- In-App Browser Warning (LINE / FB) -->
+      <div id="inAppBrowserWarning" style="display: none; background: rgba(239, 68, 68, 0.15); border: 1px solid rgba(239, 68, 68, 0.4); padding: 14px; border-radius: 12px; margin-bottom: 16px;">
+        <div style="font-weight: 700; color: #fca5a5; font-size: 0.98rem; margin-bottom: 6px;">
+          ⚠️ คุณกำลังเปิดผ่านแอพ LINE หรือ Facebook
+        </div>
+        <div style="font-size: 0.88rem; color: #f8fafc; line-height: 1.6;">
+          บราวเซอร์ของ LINE จะไม่อนุญาตให้ติดตั้งแอพลงหน้าจอโดยตรง<br />
+          👉 <strong>วิธีทำ:</strong> แตะปุ่มจุด 3 จุด <strong>(···)</strong> ที่มุมขวาบน ➔ เลือก <strong>"เปิดด้วยเบราว์เซอร์อื่น" (Open in Chrome / Safari)</strong>
+        </div>
+      </div>
+
+      <!-- Android Section -->
+      <div id="androidInstallSection" style="display: none; margin-bottom: 16px;">
+        <div id="androidDirectInstallBtnWrap" style="display: none; margin-bottom: 14px;">
+          <button class="btn btn-primary" style="width: 100%; padding: 13px; font-size: 1.05rem;" onclick="promptNativeInstall()">
+            🚀 แตะที่นี่เพื่อติดตั้งแอพทันที (Install Now)
+          </button>
+        </div>
+        <div style="background: rgba(6, 199, 85, 0.12); border: 1px solid rgba(6, 199, 85, 0.35); padding: 14px; border-radius: 12px;">
+          <div style="font-weight: 700; color: #4ade80; font-size: 0.96rem; margin-bottom: 8px;">
+            🤖 วิธีติดตั้งบนมือถือ Android (Chrome / Samsung Internet)
+          </div>
+          <ol style="font-size: 0.88rem; color: #f8fafc; padding-left: 20px; line-height: 1.7;">
+            <li>เปิดเว็บนี้ด้วย <strong>Google Chrome</strong> หรือ <strong>Samsung Internet</strong></li>
+            <li>แตะปุ่มจุด 3 จุด <strong>(⋮)</strong> ที่มุมขวาบนของหน้าจอ</li>
+            <li>เลือกเมนู <strong>"ติดตั้งแอป" (Install app)</strong> หรือ <strong>"เพิ่มลงในหน้าจอหลัก" (Add to Home screen)</strong></li>
+            <li>กดยืนยันการติดตั้ง ไอคอนแอพจะไปปรากฏบนหน้าจอมือถือของคุณทันที</li>
+          </ol>
+        </div>
+      </div>
+
+      <!-- iOS Section -->
+      <div id="iosInstallSection" style="display: none; margin-bottom: 16px;">
+        <div style="background: rgba(59, 130, 246, 0.12); border: 1px solid rgba(59, 130, 246, 0.35); padding: 14px; border-radius: 12px;">
+          <div style="font-weight: 700; color: #93c5fd; font-size: 0.96rem; margin-bottom: 8px;">
+            🍏 วิธีติดตั้งบน iPhone / iPad (iOS Safari)
+          </div>
+          <ol style="font-size: 0.88rem; color: #f8fafc; padding-left: 20px; line-height: 1.7;">
+            <li>เปิดเว็บนี้ด้วยเบราว์เซอร์ <strong>Safari</strong></li>
+            <li>แตะปุ่ม <strong>"แชร์" (ไอคอนสี่เหลี่ยมลูกศรชี้ขึ้น 📤)</strong> ที่แถบด้านล่างของหน้าจอ</li>
+            <li>เลื่อนลงมาแล้วแตะ <strong>"เพิ่มไปยังหน้าจอโฮม" (➕ Add to Home Screen)</strong></li>
+            <li>แตะ <strong>"เพิ่ม" (Add)</strong> ที่มุมขวาบนของหน้าจอ</li>
+          </ol>
+        </div>
+      </div>
+
+      <!-- General Copy Link Section -->
+      <div style="background: rgba(255, 255, 255, 0.04); border: 1px solid var(--border); padding: 14px; border-radius: 12px; margin-bottom: 16px;">
+        <div style="font-size: 0.85rem; color: var(--text-muted); margin-bottom: 8px;">
+          🌐 ลิงก์สำหรับเปิดใน Google Chrome หรือ Safari บนมือถือ:
+        </div>
+        <div style="display: flex; gap: 8px;">
+          <input type="text" id="webUrlCopyInput" class="form-control" style="font-size: 0.82rem; padding: 6px 10px;" readonly />
+          <button class="btn btn-primary btn-sm" onclick="copyWebUrl()">คัดลอกลิงก์</button>
+        </div>
+      </div>
+
+      <div style="text-align: right;">
+        <button class="btn btn-outline" style="width: 100%;" onclick="closeInstallGuideModal()">เข้าใจแล้ว / ปิดหน้าต่าง</button>
+      </div>
+    </div>
+  </div>
+
   <main class="container">
+    <!-- Mobile Install Bar (Auto-shows on mobile) -->
+    <div id="mobileInstallBar" style="display: none; background: linear-gradient(90deg, rgba(6, 199, 85, 0.18), rgba(59, 130, 246, 0.18)); border: 1px solid rgba(6, 199, 85, 0.4); border-radius: 12px; padding: 12px 16px; margin: 0 0 16px 0; align-items: center; justify-content: space-between; gap: 12px; flex-wrap: wrap;">
+      <div style="display: flex; align-items: center; gap: 12px;">
+        <span style="font-size: 1.8rem;">📱</span>
+        <div>
+          <div style="font-weight: 700; font-size: 0.95rem; color: #f8fafc;">ติดตั้ง NotifyHub ลงบนหน้าจอมือถือ</div>
+          <div style="font-size: 0.8rem; color: #94a3b8;">เปิดดูงานได้เหมือนแอพมือถือจริง ไม่ต้องพิมพ์ URL สะดวกและรวดเร็ว</div>
+        </div>
+      </div>
+      <div style="display: flex; gap: 8px;">
+        <button class="btn btn-primary btn-sm" onclick="triggerDirectInstallOrModal()" style="padding: 7px 16px; font-weight: 600;">📲 ติดตั้งทันที</button>
+        <button class="btn btn-outline btn-sm" onclick="dismissMobileBanner()" style="padding: 7px 12px;">✕</button>
+      </div>
+    </div>
+
     <!-- Navigation Tabs -->
     <div class="nav-tabs">
       <button class="nav-tab active" id="tabBtnFeed" onclick="switchTab('feed', this)">
@@ -618,6 +797,10 @@
       </button>
       <button class="nav-tab" id="tabBtnBacklog" onclick="switchTab('backlog', this)">
         📋 หน้างานค้างซ่อม (<span id="backlogCountBadge">0</span>)
+      </button>
+      
+      <button class="nav-tab admin-only" id="tabBtnTechs" style="display: none;" onclick="switchTab('techs', this)">
+        👷 จัดการรายชื่อช่าง (<span id="techsCountBadge">0</span>)
       </button>
       <button class="nav-tab admin-only" id="tabBtnTokens" style="display: none;" onclick="switchTab('tokens', this)">
         🔑 ออก Token & ห้องแจ้งเตือน
@@ -630,6 +813,15 @@
     <!-- TAB 1: LIVE FEED (Full-width, clean without Test Playground) -->
     <section id="tab-feed" class="tab-pane active">
       <div>
+        <!-- Task Scope Toggle: งานของฉัน vs งานทั้งหมด -->
+        <div class="scope-bar">
+          <button class="scope-btn active" id="scopeBtnMine" onclick="setTaskScope('mine')">
+            ⭐ งานของฉัน (<span id="myScopeCount">0</span>)
+          </button>
+          <button class="scope-btn" id="scopeBtnAll" onclick="setTaskScope('all')">
+            🌐 งานทั้งหมด (<span id="allScopeCount">0</span>)
+          </button>
+        </div>
         <div style="display: flex; align-items: center; justify-content: space-between; margin-bottom: 14px; flex-wrap: wrap; gap: 10px;">
           <div class="filter-bar" id="channelFilterBar" style="margin-bottom: 0;">
             <button class="filter-chip active" onclick="setChannelFilter('all', this)">ทั้งหมด</button>
@@ -648,18 +840,68 @@
     <section id="tab-backlog" class="tab-pane">
       <div class="card">
         <div class="card-header">
-          <div class="card-title">📋 รายการงานค้างซ่อมทั้งหมด (หมวดไฟฟ้า/โทรศัพท์)</div>
+          <div class="card-title">📋 รายการงานค้างซ่อม (แยกตามประเภทงาน: ไฟฟ้า / แอร์)</div>
           <div id="backlogSummaryBadges" style="display:flex; gap:8px; flex-wrap:wrap;"></div>
         </div>
+        <!-- Scope Bar: งานของฉัน vs งานทั้งหมด ในหน้าค้างซ่อม -->
+        <div class="scope-bar">
+          <button class="scope-btn active" id="backlogScopeBtnMine" onclick="setBacklogTaskScope('mine')">
+            ⭐ งานค้างของฉัน (<span id="myBacklogScopeCount">0</span>)
+          </button>
+          <button class="scope-btn" id="backlogScopeBtnAll" onclick="setBacklogTaskScope('all')">
+            🌐 งานค้างทั้งหมด (<span id="allBacklogScopeCount">0</span>)
+          </button>
+        </div>
         <div class="filter-bar" id="backlogTechFilterBar">
-          <button class="filter-chip active" onclick="setBacklogTechFilter('all', this)">ช่างทั้งหมด</button>
+          <button class="filter-chip active" onclick="setBacklogTechFilter('all', this)">📋 ทั้งหมด</button>
+          <button class="filter-chip" onclick="setBacklogTechFilter('elec', this)">⚡ งานไฟฟ้า (<span id="elecCountSpan">0</span>)</button>
+          <button class="filter-chip" onclick="setBacklogTechFilter('air', this)">❄️ งานแอร์ (<span id="airCountSpan">0</span>)</button>
           <button class="filter-chip" onclick="setBacklogTechFilter('overdue', this)">🔴 เฉพาะงานเกินกำหนด</button>
-          <button class="filter-chip" onclick="setBacklogTechFilter('นาย มี', this)">👤 นาย มี</button>
-          <button class="filter-chip" onclick="setBacklogTechFilter('นาย พิวพิว', this)">👤 นาย พิวพิว</button>
-          <button class="filter-chip" onclick="setBacklogTechFilter('นาย ศิวกร', this)">👤 นาย ศิวกร</button>
-          <button class="filter-chip" onclick="setBacklogTechFilter('นาย อาทิตย์', this)">👤 นาย อาทิตย์</button>
         </div>
         <div id="backlogList" class="notif-list"></div>
+      </div>
+    </section>
+
+    
+    <!-- TAB: TECHNICIANS MANAGEMENT (ADMIN ONLY) -->
+    <section id="tab-techs" class="tab-pane">
+      <div class="card">
+        <div class="card-header">
+          <div class="card-title">👷 จัดการรายชื่อช่าง & ผู้มีสิทธิ์รับงาน (Technicians)</div>
+          <button class="btn btn-outline btn-sm" onclick="loadTechniciansList()">🔄 รีเฟรชรายชื่อ</button>
+        </div>
+        <p style="color: var(--text-muted); font-size: 0.88rem; margin-bottom: 16px; line-height: 1.6;">
+          📌 <strong>ฐานข้อมูลรายชื่อช่างของแอพ NotifyHub:</strong> ระบบจะอนุญาตให้เฉพาะพนักงานที่คุณเพิ่มและมีรายชื่ออยู่ในรายการนี้เข้าใช้งานและรับงานได้เท่านั้น (ไม่ยึดตามฐานข้อมูลระบบเดิมที่ไม่อัปเดต) หากพนักงานลาออก สามารถกด <strong>"ลบ"</strong> ได้ทันที พนักงานจะไม่สามารถเข้าเว็บหรือรับงานได้อีกต่อไป
+        </p>
+
+        <!-- Form Add Tech -->
+        <form onsubmit="handleAddTechnician(event)" style="background: var(--bg-input); padding: 16px; border-radius: 12px; border: 1px solid var(--border); margin-bottom: 20px;">
+          <div style="font-weight: 600; font-size: 0.95rem; margin-bottom: 10px; color: #4ade80;">➕ เพิ่มช่าง / พนักงานใหม่</div>
+          <div class="grid-2" style="gap: 12px; margin-bottom: 12px;">
+            <div class="form-group" style="margin-bottom: 0;">
+              <label class="form-label">รหัสพนักงาน (ID เช่น 62001 หรือ 56877)</label>
+              <input type="text" id="newTechId" class="form-control" placeholder="ระบุรหัสพนักงาน..." required />
+            </div>
+            <div class="form-group" style="margin-bottom: 0;">
+              <label class="form-label">ชื่อ - นามสกุล ช่าง</label>
+              <input type="text" id="newTechName" class="form-control" placeholder="เช่น นาย สมชาย ใจดี..." required />
+            </div>
+          </div>
+          <button type="submit" class="btn btn-primary btn-sm">➕ บันทึกพนักงานใหม่</button>
+        </form>
+
+        <!-- Search Bar & Count -->
+        <div style="display: flex; gap: 12px; align-items: center; justify-content: space-between; margin-bottom: 14px; flex-wrap: wrap;">
+          <input type="text" id="techSearchInput" class="form-control" placeholder="🔍 ค้นหาตามรหัส หรือชื่อพนักงาน..." oninput="filterTechListUI()" style="max-width: 320px; font-size: 0.88rem; padding: 7px 12px;" />
+          <div style="font-size: 0.86rem; color: var(--text-muted);">
+            ช่างทั้งหมด: <strong id="totalTechsSpan" style="color: #4ade80;">0</strong> คน
+          </div>
+        </div>
+
+        <!-- Techs List -->
+        <div id="techsListContainer" style="max-height: 520px; overflow-y: auto; display: flex; flex-direction: column; gap: 8px;">
+          <div style="text-align: center; color: var(--text-muted); padding: 20px;">กำลังโหลดรายชื่อพนักงาน...</div>
+        </div>
       </div>
     </section>
 
@@ -761,12 +1003,270 @@
       channels: [],
       tokens: [],
       notifications: [],
+      technicians: [],
+      currentUser: JSON.parse(localStorage.getItem('notifyhub_user') || 'null'),
+      taskScope: 'mine',           // 'mine' | 'all'
+      backlogTaskScope: 'mine',    // 'mine' | 'all'
       selectedChannel: 'all',
       selectedBacklogFilter: 'all',
       soundEnabled: true,
       isAdmin: sessionStorage.getItem('notifyhub_admin') === 'true',
       serverInfo: {}
     };
+
+    // ==========================================
+    // AUTH & TECHNICIAN ACCESS CONTROL
+    // ==========================================
+    function checkUserAuth() {
+      const overlay = document.getElementById('loginOverlay');
+      const userHeader = document.getElementById('userProfileHeader');
+      const userNameDisplay = document.getElementById('userNameDisplay');
+
+      if (!state.currentUser || !state.currentUser.id) {
+        if (overlay) overlay.style.display = 'flex';
+        if (userHeader) userHeader.style.display = 'none';
+        const idInput = document.getElementById('employeeIdInput');
+        if (idInput) setTimeout(() => idInput.focus(), 150);
+        return false;
+      }
+
+      if (overlay) overlay.style.display = 'none';
+      if (userHeader) {
+        userHeader.style.display = 'flex';
+        if (userNameDisplay) userNameDisplay.textContent = `👷 ${state.currentUser.name} (${state.currentUser.id})`;
+      }
+      return true;
+    }
+
+    async function handleEmployeeLogin(e) {
+      if (e) e.preventDefault();
+      const idInput = document.getElementById('employeeIdInput');
+      const errBox = document.getElementById('loginErrorMsg');
+      const btn = document.getElementById('loginSubmitBtn');
+      const employeeId = (idInput?.value || '').trim();
+
+      if (!employeeId) return;
+
+      if (btn) {
+        btn.disabled = true;
+        btn.textContent = '⏳ กำลังตรวจสอบรหัส...';
+      }
+      if (errBox) errBox.style.display = 'none';
+
+      try {
+        const res = await fetch('/api/auth/login', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ employeeId })
+        });
+        const data = await res.json();
+
+        if (res.ok && data.ok && data.user) {
+          state.currentUser = data.user;
+          localStorage.setItem('notifyhub_user', JSON.stringify(data.user));
+          checkUserAuth();
+          showToast(`👋 ยินดีต้อนรับคุณ ${data.user.name}`, `เข้าสู่ระบบด้วยรหัส ${data.user.id} สำเร็จ`);
+          renderAll();
+          return;
+        }
+
+        if (errBox) {
+          errBox.textContent = `❌ ${data.error || 'ไม่พบรหัสพนักงานนี้ในระบบ หรือพ้นสภาพพนักงานแล้ว'}`;
+          errBox.style.display = 'block';
+        }
+      } catch (err) {
+        if (errBox) {
+          errBox.textContent = '❌ ไม่สามารถเชื่อมต่อกับเซิร์ฟเวอร์ได้ กรุณาลองใหม่อีกครั้ง';
+          errBox.style.display = 'block';
+        }
+      } finally {
+        if (btn) {
+          btn.disabled = false;
+          btn.textContent = '🚀 เข้าสู่ระบบรับงาน';
+        }
+      }
+    }
+
+    async function verifyUserStatus() {
+      if (!state.currentUser || !state.currentUser.id) return;
+      try {
+        const res = await fetch(`/api/auth/verify?id=${encodeURIComponent(state.currentUser.id)}`);
+        const data = await res.json();
+        if (!data.active) {
+          handleLogout(true);
+        }
+      } catch (err) {
+        // network hiccup, don't force logout
+      }
+    }
+
+    function handleLogout(forced = false) {
+      if (!forced && !confirm('ต้องการออกจากระบบใช่หรือไม่?')) return;
+      state.currentUser = null;
+      localStorage.removeItem('notifyhub_user');
+      checkUserAuth();
+      if (forced) {
+        const errBox = document.getElementById('loginErrorMsg');
+        if (errBox) {
+          errBox.textContent = '⚠️ รหัสพนักงานของคุณถูกลบออกจากระบบแล้ว ไม่สามารถเข้าใช้งานได้';
+          errBox.style.display = 'block';
+        }
+        showToast('⚠️ สิทธิ์ถูกยกเลิก', 'รหัสพนักงานของคุณไม่ได้อยู่ในระบบแล้ว');
+      } else {
+        showToast('👋 ออกจากระบบแล้ว', 'กรุณาระบุรหัสพนักงานใหม่เมื่อต้องการใช้งาน');
+      }
+    }
+
+    // ==========================================
+    // ASSIGNEE MATCHING & SCOPE HELPERS
+    // ==========================================
+    function matchAssignee(assigneeStr, user = state.currentUser) {
+      if (!user || !user.id) return true;
+      if (!assigneeStr) return false;
+      const parts = String(assigneeStr).split(/[,;\n]/).map(s => s.trim().toLowerCase());
+      const uid = String(user.id).trim().toLowerCase();
+      const uname = String(user.name).trim().toLowerCase();
+      const cleanUname = uname.replace(/^(นาย|นาง|น\.ส\.)\s*/, '').trim();
+
+      for (const p of parts) {
+        if (p.includes(uid)) return true;
+        if (p.includes(uname)) return true;
+        const cleanP = p.replace(/^(นาย|นาง|น\.ส\.)\s*/, '').trim();
+        const pFirst = cleanP.split(/\s+/)[0];
+        const uFirst = cleanUname.split(/\s+/)[0];
+        if (cleanP === cleanUname || (pFirst && uFirst && pFirst === uFirst)) return true;
+      }
+      return false;
+    }
+
+    function isAssignedToCurrentUser(item, user = state.currentUser) {
+      if (!user || !user.id) return true;
+      if (matchAssignee(item.assignee, user)) return true;
+      const uname = String(user.name || '').trim();
+      const cleanUname = uname.replace(/^(นาย|นาง|น\.ส\.)\s*/, '').trim();
+      const textToSearch = `${item.title || ''} ${item.message || ''}`;
+      if (uname && textToSearch.includes(uname)) return true;
+      if (cleanUname && cleanUname.length >= 2 && textToSearch.includes(cleanUname)) return true;
+      return false;
+    }
+
+    function setTaskScope(scope) {
+      state.taskScope = scope;
+      document.getElementById('scopeBtnMine')?.classList.toggle('active', scope === 'mine');
+      document.getElementById('scopeBtnAll')?.classList.toggle('active', scope === 'all');
+      renderNotifications();
+    }
+
+    function setBacklogTaskScope(scope) {
+      state.backlogTaskScope = scope;
+      document.getElementById('backlogScopeBtnMine')?.classList.toggle('active', scope === 'mine');
+      document.getElementById('backlogScopeBtnAll')?.classList.toggle('active', scope === 'all');
+      renderBacklogView();
+    }
+
+    // ==========================================
+    // ADMIN TECHNICIAN MANAGEMENT
+    // ==========================================
+    async function loadTechniciansList() {
+      try {
+        const res = await fetch('/api/technicians');
+        const data = await res.json();
+        if (res.ok && data.technicians) {
+          state.technicians = data.technicians;
+          const countEl = document.getElementById('techsCountBadge');
+          if (countEl) countEl.textContent = data.technicians.length;
+          const totalSpan = document.getElementById('totalTechsSpan');
+          if (totalSpan) totalSpan.textContent = data.technicians.length;
+          renderTechsList(data.technicians);
+        }
+      } catch (err) {
+        console.error('Failed to load technicians:', err);
+      }
+    }
+
+    function renderTechsList(list) {
+      const container = document.getElementById('techsListContainer');
+      if (!container) return;
+
+      if (!list || list.length === 0) {
+        container.innerHTML = '<div style="text-align: center; color: var(--text-muted); padding: 24px;">ไม่พบรายชื่อพนักงาน</div>';
+        return;
+      }
+
+      container.innerHTML = list.map(t => `
+        <div style="background: var(--bg-input); border: 1px solid var(--border); border-radius: 10px; padding: 10px 14px; display: flex; align-items: center; justify-content: space-between; gap: 10px;">
+          <div style="display: flex; align-items: center; gap: 10px;">
+            <span style="font-family: monospace; background: rgba(59,130,246,0.15); color: #93c5fd; padding: 3px 8px; border-radius: 6px; font-weight: 600; font-size: 0.88rem;">${escapeHtml(t.id)}</span>
+            <div>
+              <span style="font-weight: 600; color: #f8fafc; font-size: 0.92rem;">${escapeHtml(t.name)}</span>
+              <span style="margin-left: 8px; font-size: 0.76rem; color: #4ade80;">● สิทธิ์ใช้งานปกติ</span>
+            </div>
+          </div>
+          <button class="btn btn-danger btn-sm" onclick="handleDeleteTechnician('${escapeHtml(t.id)}', '${escapeHtml(t.name)}')">
+            🗑️ ลบ
+          </button>
+        </div>
+      `).join('');
+    }
+
+    function filterTechListUI() {
+      const query = (document.getElementById('techSearchInput')?.value || '').trim().toLowerCase();
+      const filtered = state.technicians.filter(t => 
+        String(t.id).toLowerCase().includes(query) || String(t.name).toLowerCase().includes(query)
+      );
+      renderTechsList(filtered);
+    }
+
+    async function handleAddTechnician(e) {
+      e.preventDefault();
+      const idInput = document.getElementById('newTechId');
+      const nameInput = document.getElementById('newTechName');
+      const id = idInput.value.trim();
+      const name = nameInput.value.trim();
+
+      if (!id || !name) return;
+
+      try {
+        const res = await fetch('/api/technicians', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ id, name })
+        });
+        const data = await res.json();
+        if (res.ok) {
+          idInput.value = '';
+          nameInput.value = '';
+          showToast('✅ เพิ่มพนักงานสำเร็จ', `${name} (${id})`);
+          loadTechniciansList();
+        } else {
+          alert(data.error || 'เกิดข้อผิดพลาดในการเพิ่มพนักงาน');
+        }
+      } catch (err) {
+        alert('ไม่สามารถเชื่อมต่อเซิร์ฟเวอร์ได้');
+      }
+    }
+
+    async function handleDeleteTechnician(id, name) {
+      if (!confirm(`ยืนยันการลบพนักงาน "${name}" (รหัส ${id}) ออกจากระบบ?\n\n⚠️ เมื่อลบแล้ว พนักงานคนนี้จะไม่สามารถล็อกอินเข้าสู่ระบบได้อีกต่อไป!`)) {
+        return;
+      }
+
+      try {
+        const res = await fetch(`/api/technicians/${encodeURIComponent(id)}`, { method: 'DELETE' });
+        const data = await res.json();
+        if (res.ok) {
+          showToast('🗑️ ลบพนักงานสำเร็จ', `ลบ ${name} (${id}) ออกจากระบบแล้ว`);
+          if (state.currentUser && String(state.currentUser.id).toUpperCase() === String(id).toUpperCase()) {
+            handleLogout(true);
+          }
+          loadTechniciansList();
+        } else {
+          alert(data.error || 'เกิดข้อผิดพลาดในการลบพนักงาน');
+        }
+      } catch (err) {
+        alert('ไม่สามารถเชื่อมต่อเซิร์ฟเวอร์ได้');
+      }
+    }
 
     function handleAdminBtnClick() {
       if (state.isAdmin) {
@@ -829,6 +1329,9 @@
       document.querySelectorAll('.admin-only').forEach(el => {
         el.style.display = state.isAdmin ? '' : 'none';
       });
+      if (state.isAdmin) {
+        loadTechniciansList();
+      }
       renderNotifications();
     }
 
@@ -885,18 +1388,25 @@
     }
 
     function switchTab(tabId, btn) {
-      if ((tabId === 'tokens' || tabId === 'docs') && !state.isAdmin) {
+      if ((tabId === 'tokens' || tabId === 'docs' || tabId === 'techs') && !state.isAdmin) {
         handleAdminBtnClick();
         return;
       }
       document.querySelectorAll('.tab-pane').forEach(p => p.classList.remove('active'));
       document.querySelectorAll('.nav-tab').forEach(b => b.classList.remove('active'));
-      document.getElementById(`tab-${tabId}`).classList.add('active');
+      const target = document.getElementById(`tab-${tabId}`);
+      if (target) target.classList.add('active');
       if (btn) btn.classList.add('active');
+      if (tabId === 'techs') loadTechniciansList();
     }
 
     // Load initial data
     async function initApp() {
+      checkUserAuth();
+      if (state.currentUser) {
+        verifyUserStatus();
+      }
+
       const res = await fetch('/api/init');
       const data = await res.json();
       state.vapidPublicKey = data.vapidPublicKey;
@@ -909,6 +1419,7 @@
       renderAll();
       connectSSE();
       checkExistingPushSubscription();
+      setInterval(verifyUserStatus, 60000);
     }
 
     function renderAll() {
@@ -930,31 +1441,51 @@
     }
 
     function renderBacklogView() {
-      const backlogCh = state.channels.find(c => c.name.includes('งานค้าง'));
-      const allBacklog = backlogCh
-        ? state.notifications.filter(n => n.channelId === backlogCh.id)
-        : state.notifications.filter(n => (n.channelName || '').includes('งานค้าง'));
+      const allBacklog = state.notifications.filter(n => (n.channelName || '').includes('งานค้าง'));
+      const myBacklogCount = allBacklog.filter(n => isAssignedToCurrentUser(n)).length;
+
+      const myBacklogScopeSpan = document.getElementById('myBacklogScopeCount');
+      const allBacklogScopeSpan = document.getElementById('allBacklogScopeCount');
+      if (myBacklogScopeSpan) myBacklogScopeSpan.textContent = myBacklogCount;
+      if (allBacklogScopeSpan) allBacklogScopeSpan.textContent = allBacklog.length;
+
+      let baseList = allBacklog;
+      if (state.backlogTaskScope === 'mine' && state.currentUser) {
+        baseList = baseList.filter(n => isAssignedToCurrentUser(n));
+      }
+
+      const elecJobs = baseList.filter(n => (n.channelName || '').includes('ไฟฟ้า') || (n.title || '').includes('[ไฟฟ้า]'));
+      const airJobs = baseList.filter(n => (n.channelName || '').includes('แอร์') || (n.title || '').includes('[แอร์]'));
 
       const badgeEl = document.getElementById('backlogCountBadge');
-      if (badgeEl) badgeEl.textContent = allBacklog.length;
+      if (badgeEl) badgeEl.textContent = state.backlogTaskScope === 'mine' ? myBacklogCount : allBacklog.length;
 
-      const overdueCount = allBacklog.filter(n => n.priority === 'urgent').length;
-      const normalCount = allBacklog.length - overdueCount;
+      const elecSpan = document.getElementById('elecCountSpan');
+      if (elecSpan) elecSpan.textContent = elecJobs.length;
+
+      const airSpan = document.getElementById('airCountSpan');
+      if (airSpan) airSpan.textContent = airJobs.length;
+
+      const overdueCount = baseList.filter(n => n.priority === 'urgent').length;
+      const normalCount = baseList.length - overdueCount;
 
       const summaryEl = document.getElementById('backlogSummaryBadges');
       if (summaryEl) {
         summaryEl.innerHTML = `
-          <span class="pill" style="background:rgba(245,158,11,0.2);color:#fcd34d;">ทั้งหมด ${allBacklog.length} งาน</span>
+          <span class="pill" style="background:rgba(245,158,11,0.2);color:#fcd34d;">⚡ ไฟฟ้า ${elecJobs.length} งาน</span>
+          <span class="pill" style="background:rgba(6,182,212,0.2);color:#67e8f9;">❄️ แอร์ ${airJobs.length} งาน</span>
           <span class="pill pill-urgent">🔴 เกินกำหนด ${overdueCount} งาน</span>
           <span class="pill" style="background:rgba(6,199,85,0.2);color:#4ade80;">🟢 อยู่ในกำหนด ${normalCount} งาน</span>
         `;
       }
 
-      let filtered = allBacklog;
-      if (state.selectedBacklogFilter === 'overdue') {
+      let filtered = baseList;
+      if (state.selectedBacklogFilter === 'elec') {
+        filtered = elecJobs;
+      } else if (state.selectedBacklogFilter === 'air') {
+        filtered = airJobs;
+      } else if (state.selectedBacklogFilter === 'overdue') {
         filtered = allBacklog.filter(n => n.priority === 'urgent');
-      } else if (state.selectedBacklogFilter !== 'all') {
-        filtered = allBacklog.filter(n => (n.assignee || '').includes(state.selectedBacklogFilter));
       }
 
       const listEl = document.getElementById('backlogList');
@@ -1008,10 +1539,12 @@
     function renderChannelFilters() {
       const bar = document.getElementById('channelFilterBar');
       let html = `<button class="filter-chip ${state.selectedChannel === 'all' ? 'active' : ''}" onclick="setChannelFilter('all', this)">ทั้งหมด (${state.notifications.length})</button>`;
-      state.channels.forEach(c => {
-        const count = state.notifications.filter(n => n.channelId === c.id).length;
-        html += `<button class="filter-chip ${state.selectedChannel === c.id ? 'active' : ''}" onclick="setChannelFilter('${c.id}', this)">${escapeHtml(c.name)} (${count})</button>`;
-      });
+      state.channels
+        .filter(c => !['ch_default', 'ch_tasks', 'ch_urgent'].includes(c.id))
+        .forEach(c => {
+          const count = state.notifications.filter(n => n.channelId === c.id).length;
+          html += `<button class="filter-chip ${state.selectedChannel === c.id ? 'active' : ''}" onclick="setChannelFilter('${c.id}', this)">${escapeHtml(c.name)} (${count})</button>`;
+        });
       bar.innerHTML = html;
       document.getElementById('notifCountBadge').textContent = state.notifications.length;
     }
@@ -1024,17 +1557,42 @@
 
     function renderNotifications() {
       const list = document.getElementById('notifList');
-      const filtered = state.selectedChannel === 'all'
+      if (!list) return;
+
+      // Update Scope counters
+      const myCount = state.notifications.filter(n => isAssignedToCurrentUser(n)).length;
+      const allCount = state.notifications.length;
+      const myScopeSpan = document.getElementById('myScopeCount');
+      const allScopeSpan = document.getElementById('allScopeCount');
+      if (myScopeSpan) myScopeSpan.textContent = myCount;
+      if (allScopeSpan) allScopeSpan.textContent = allCount;
+
+      let filtered = state.selectedChannel === 'all'
         ? state.notifications
         : state.notifications.filter(n => n.channelId === state.selectedChannel);
 
+      // Filter by taskScope (⭐ งานของฉัน vs 🌐 งานทั้งหมด)
+      if (state.taskScope === 'mine' && state.currentUser) {
+        filtered = filtered.filter(n => isAssignedToCurrentUser(n));
+      }
+
       if (filtered.length === 0) {
-        list.innerHTML = `
-          <div class="card" style="text-align: center; padding: 48px 20px; color: var(--text-muted);">
-            <div style="font-size: 2.5rem; margin-bottom: 10px;">📭</div>
-            <div>ยังไม่มีรายการแจ้งเตือนในหมวดหมู่นี้</div>
-          </div>
-        `;
+        if (state.taskScope === 'mine') {
+          list.innerHTML = `
+            <div class="card" style="text-align: center; padding: 48px 20px; color: var(--text-muted);">
+              <div style="font-size: 2.5rem; margin-bottom: 10px;">🎉</div>
+              <div style="font-weight: 600; font-size: 1.05rem; color: #f8fafc; margin-bottom: 6px;">ไม่มีงานที่ได้รับมอบหมายในขณะนี้</div>
+              <div style="font-size: 0.88rem;">คุณสามารถแตะปุ่ม <strong>"🌐 งานทั้งหมด"</strong> ด้านบนเพื่อดูงานอื่นๆ ในระบบได้ครับ</div>
+            </div>
+          `;
+        } else {
+          list.innerHTML = `
+            <div class="card" style="text-align: center; padding: 48px 20px; color: var(--text-muted);">
+              <div style="font-size: 2.5rem; margin-bottom: 10px;">📭</div>
+              <div>ยังไม่มีรายการแจ้งเตือนในหมวดหมู่นี้</div>
+            </div>
+          `;
+        }
         return;
       }
 
@@ -1413,6 +1971,123 @@ print(r.json())`;
         showToast('🔔 เปิดรับการแจ้งเตือนผ่านหน้าเว็บสำเร็จ', 'พร้อมแจ้งเตือนแบบ Real-time ทันที');
       }
     }
+
+    let deferredPrompt = null;
+
+    window.addEventListener('beforeinstallprompt', (e) => {
+      e.preventDefault();
+      deferredPrompt = e;
+      const wrap = document.getElementById('androidDirectInstallBtnWrap');
+      if (wrap) wrap.style.display = 'block';
+      const mobileBar = document.getElementById('mobileInstallBar');
+      if (mobileBar && !sessionStorage.getItem('dismissedMobileBanner')) {
+        mobileBar.style.display = 'flex';
+      }
+    });
+
+    function isMobileDevice() {
+      return /android|iphone|ipad|ipod|mobile/i.test(navigator.userAgent);
+    }
+
+    function isIOSDevice() {
+      return /iphone|ipad|ipod/i.test(navigator.userAgent);
+    }
+
+    function isInAppBrowser() {
+      const ua = (navigator.userAgent || '').toLowerCase();
+      return ua.includes('line') || ua.includes('fbav') || ua.includes('fban') || ua.includes('instagram') || ua.includes('twitter');
+    }
+
+    async function triggerDirectInstallOrModal() {
+      if (deferredPrompt) {
+        try {
+          deferredPrompt.prompt();
+          const choice = await deferredPrompt.userChoice;
+          if (choice && choice.outcome === 'accepted') {
+            showToast('🎉 ติดตั้งแอพสำเร็จ!', 'ไอคอน NotifyHub ถูกเพิ่มลงในหน้าจอมือถือของคุณแล้ว');
+            deferredPrompt = null;
+            return;
+          }
+        } catch (e) {}
+      }
+      showInstallGuideModal();
+    }
+
+    async function promptNativeInstall() {
+      if (deferredPrompt) {
+        try {
+          deferredPrompt.prompt();
+          const choice = await deferredPrompt.userChoice;
+          if (choice && choice.outcome === 'accepted') {
+            showToast('🎉 ติดตั้งแอพสำเร็จ!', 'ไอคอน NotifyHub ถูกเพิ่มลงในหน้าจอมือถือของคุณแล้ว');
+            deferredPrompt = null;
+            closeInstallGuideModal();
+            return;
+          }
+        } catch (e) {}
+      }
+      alert('บราวเซอร์ของคุณไม่รองรับการติดตั้งอัตโนมัติ กรุณาทำตามขั้นตอนในกรอบข้อความด้านล่างครับ');
+    }
+
+    function showInstallGuideModal() {
+      const modal = document.getElementById('modalInstallGuide');
+      const inAppWarning = document.getElementById('inAppBrowserWarning');
+      const androidSection = document.getElementById('androidInstallSection');
+      const iosSection = document.getElementById('iosInstallSection');
+      const copyInput = document.getElementById('webUrlCopyInput');
+      const directWrap = document.getElementById('androidDirectInstallBtnWrap');
+
+      if (copyInput) copyInput.value = window.location.origin;
+
+      if (isInAppBrowser()) {
+        if (inAppWarning) inAppWarning.style.display = 'block';
+      } else {
+        if (inAppWarning) inAppWarning.style.display = 'none';
+      }
+
+      if (isIOSDevice()) {
+        if (iosSection) iosSection.style.display = 'block';
+        if (androidSection) androidSection.style.display = 'none';
+      } else {
+        if (androidSection) androidSection.style.display = 'block';
+        if (iosSection) iosSection.style.display = 'none';
+        if (directWrap) directWrap.style.display = deferredPrompt ? 'block' : 'none';
+      }
+
+      if (modal) modal.classList.add('active');
+    }
+
+    function closeInstallGuideModal() {
+      const modal = document.getElementById('modalInstallGuide');
+      if (modal) modal.classList.remove('active');
+    }
+
+    function dismissMobileBanner() {
+      const mobileBar = document.getElementById('mobileInstallBar');
+      if (mobileBar) mobileBar.style.display = 'none';
+      sessionStorage.setItem('dismissedMobileBanner', 'true');
+    }
+
+    function copyWebUrl() {
+      const copyInput = document.getElementById('webUrlCopyInput');
+      if (copyInput) {
+        copyInput.select();
+        navigator.clipboard.writeText(copyInput.value).then(() => {
+          showToast('📋 คัดลอกลิงก์สำเร็จ!', 'นำลิงก์ไปวางใน Chrome หรือ Safari บนมือถือได้เลยครับ');
+        }).catch(() => {
+          document.execCommand('copy');
+          showToast('📋 คัดลอกลิงก์สำเร็จ!', 'นำลิงก์ไปวางใน Chrome หรือ Safari บนมือถือได้เลยครับ');
+        });
+      }
+    }
+
+    // Auto-check on load for mobile banner
+    window.addEventListener('DOMContentLoaded', () => {
+      if (isMobileDevice() && !sessionStorage.getItem('dismissedMobileBanner')) {
+        const mobileBar = document.getElementById('mobileInstallBar');
+        if (mobileBar) mobileBar.style.display = 'flex';
+      }
+    });
 
     initApp();
   </script>

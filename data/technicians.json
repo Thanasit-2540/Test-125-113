@@ -1,0 +1,34 @@
+{
+  "technicians": [
+    {
+      "id": "56877",
+      "name": "นาย มี",
+      "role": "technician",
+      "active": true
+    },
+    {
+      "id": "57145",
+      "name": "นาย พิวพิว",
+      "role": "technician",
+      "active": true
+    },
+    {
+      "id": "52B13",
+      "name": "นาย กิตติพงษ์ ศรีโยธา",
+      "role": "technician",
+      "active": true
+    },
+    {
+      "id": "51061",
+      "name": "นาย อาทิตย์ บ้วนนอก",
+      "role": "technician",
+      "active": true
+    },
+    {
+      "id": "61B47",
+      "name": "นาย ศิวกร วงค์ครองศักดิ์",
+      "role": "technician",
+      "active": true
+    }
+  ]
+}
