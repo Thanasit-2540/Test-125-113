@@ -7,31 +7,49 @@ self.addEventListener('activate', (event) => {
 });
 
 self.addEventListener('push', (event) => {
-  if (!event.data) return;
-
   let data = {};
-  try {
-    data = event.data.json();
-  } catch (e) {
-    data = { title: 'แจ้งเตือนใหม่', body: event.data.text() };
+  if (event.data) {
+    try {
+      data = event.data.json();
+    } catch (e) {
+      data = { title: 'NotifyHub แจ้งเตือน', body: event.data.text() };
+    }
+  } else {
+    data = { title: 'NotifyHub แจ้งเตือน', body: 'มีงานใหม่เข้ามาในระบบ' };
   }
 
   const title = data.title || 'NotifyHub แจ้งเตือน';
+
+  // Standard options compatible with both iOS Safari APNs & Android Chrome
   const options = {
     body: data.body || '',
     icon: '/icon-192.png',
     badge: '/icon-192.png',
-    image: data.image || undefined,
-    tag: data.tag || `notif-${Date.now()}`,
-    renotify: true,
-    requireInteraction: data.priority === 'urgent' || data.priority === 'high',
-    vibrate: data.priority === 'urgent' ? [300, 100, 300, 100, 400] : [200, 100, 200],
+    tag: data.tag ? String(data.tag) : `notif_${Date.now()}`,
     data: {
       url: data.url || '/'
     }
   };
 
-  event.waitUntil(self.registration.showNotification(title, options));
+  // Optional enhancements (safely applied if supported)
+  if (data.image) {
+    options.image = data.image;
+  }
+  if (data.priority === 'urgent' && 'vibrate' in Notification.prototype) {
+    options.vibrate = [300, 100, 300, 100, 400];
+  }
+
+  // Display notification with fallback in case iOS/Safari rejects extended options
+  const showPromise = self.registration.showNotification(title, options).catch((err) => {
+    console.warn('showNotification fallback triggered:', err);
+    return self.registration.showNotification(title, {
+      body: data.body || '',
+      icon: '/icon-192.png',
+      data: { url: data.url || '/' }
+    });
+  });
+
+  event.waitUntil(showPromise);
 });
 
 self.addEventListener('notificationclick', (event) => {

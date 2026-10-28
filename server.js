@@ -497,6 +497,14 @@ app.get('/api/init', (req, res) => {
     tokens: isAdmin ? db.tokens : [], // Tokens only revealed to authenticated admins!
     notifications: db.notifications.slice(0, 100),
     subscriberCount: db.subscriptions.length,
+    subscribers: isAdmin ? db.subscriptions.map(s => ({
+      id: s.id,
+      deviceName: s.deviceName,
+      userId: s.userId || null,
+      userName: s.userName || null,
+      role: s.role || 'anonymous',
+      updatedAt: s.updatedAt
+    })) : [],
     serverInfo: {
       port: PORT,
       localIPs,
@@ -509,7 +517,7 @@ app.get('/api/init', (req, res) => {
 // 3. WEB PUSH SUBSCRIPTION ENDPOINT
 // ==========================================
 app.post('/api/subscribe', (req, res) => {
-  const { subscription, deviceName, channels } = req.body;
+  const { subscription, deviceName, channels, userId, userName, role } = req.body;
   if (!subscription || !subscription.endpoint) {
     return res.status(400).json({ status: 400, message: 'Invalid subscription object' });
   }
@@ -519,6 +527,9 @@ app.post('/api/subscribe', (req, res) => {
     id: existingIndex >= 0 ? db.subscriptions[existingIndex].id : `sub_${Date.now()}`,
     deviceName: deviceName || 'อุปกรณ์ทั่วไป',
     channels: channels || ['*'],
+    userId: userId || null,
+    userName: userName || null,
+    role: role || (userId ? 'technician' : 'anonymous'),
     subscription,
     updatedAt: new Date().toISOString()
   };
@@ -530,8 +541,38 @@ app.post('/api/subscribe', (req, res) => {
   }
 
   saveDB(db);
+  console.log(`[Push Subscribed] Device: ${subRecord.deviceName} | User: ${subRecord.userName || 'Unassigned'} (${subRecord.userId || '-'}) | Role: ${subRecord.role}`);
   res.json({ status: 200, message: 'Subscribed successfully', subscriberCount: db.subscriptions.length });
 });
+
+// Helper: Match technician assignee with subscription
+function matchAssigneeServer(assigneeStr, sub) {
+  // If no assignee specified on notification -> general broadcast to all devices
+  if (!assigneeStr || !String(assigneeStr).trim()) return true;
+
+  // Admin devices always receive all dispatches
+  if (sub.role === 'admin') return true;
+
+  const uid = String(sub.userId || '').trim().toLowerCase();
+  const uname = String(sub.userName || '').trim().toLowerCase();
+  
+  // Anonymous devices (not logged in as any technician) don't receive personal tasks
+  if (!uid && !uname) return false;
+
+  const parts = String(assigneeStr).split(/[,;\n]/).map(s => s.trim().toLowerCase());
+  const cleanUname = uname.replace(/^(นาย|นาง|น\.ส\.)\s*/, '').trim();
+  const uFirst = cleanUname.split(/\s+/)[0];
+
+  for (const p of parts) {
+    if (!p) continue;
+    if (uid && p.includes(uid)) return true;
+    if (uname && p.includes(uname)) return true;
+    const cleanP = p.replace(/^(นาย|นาง|น\.ส\.)\s*/, '').trim();
+    const pFirst = cleanP.split(/\s+/)[0];
+    if (cleanP === cleanUname || (pFirst && uFirst && pFirst === uFirst)) return true;
+  }
+  return false;
+}
 
 // ==========================================
 // 4. LINE NOTIFY COMPATIBLE ENDPOINT (/api/notify & /notify)
@@ -641,12 +682,20 @@ async function handleNotify(req, res) {
       createdAt: notification.createdAt
     });
 
+    // 9. Send Web Push Notification to target subscribed background devices
+    const targetSubscriptions = db.subscriptions.filter(sub => matchAssigneeServer(notification.assignee, sub));
+    console.log(`[Push Dispatch] Notification '${notification.title}' (Assignee: '${notification.assignee || 'ทุกคน'}') -> Targets: ${targetSubscriptions.length}/${db.subscriptions.length} devices`);
+
     const invalidEndpoints = [];
     await Promise.allSettled(
-      db.subscriptions.map(async (sub) => {
+      targetSubscriptions.map(async (sub) => {
         try {
-          await webpush.sendNotification(sub.subscription, pushPayload);
+          await webpush.sendNotification(sub.subscription, pushPayload, {
+            TTL: 86400,
+            urgency: notification.priority === 'urgent' ? 'high' : 'normal'
+          });
         } catch (err) {
+          console.error(`[WebPush Error] Sub ID ${sub.id} (${sub.userName || sub.deviceName}):`, err.statusCode || err.message);
           if (err.statusCode === 404 || err.statusCode === 410) {
             invalidEndpoints.push(sub.subscription.endpoint);
           }
@@ -765,6 +814,30 @@ app.delete('/api/notifications', requireAdmin, (req, res) => {
   saveDB(db);
   broadcastSSE('notifications_cleared', {});
   res.json({ status: 200, message: 'Cleared all notifications' });
+});
+
+// View all registered push notification devices
+app.get('/api/subscribers', requireAdmin, (req, res) => {
+  const subscribers = db.subscriptions.map(s => ({
+    id: s.id,
+    deviceName: s.deviceName,
+    userId: s.userId || null,
+    userName: s.userName || null,
+    role: s.role || 'anonymous',
+    updatedAt: s.updatedAt
+  }));
+  res.json({ status: 200, subscribers, count: subscribers.length });
+});
+
+// Delete an old/stale subscription device
+app.delete('/api/subscribers/:id', requireAdmin, (req, res) => {
+  const { id } = req.params;
+  const initialLen = db.subscriptions.length;
+  db.subscriptions = db.subscriptions.filter(s => s.id !== id);
+  if (db.subscriptions.length !== initialLen) {
+    saveDB(db);
+  }
+  res.json({ status: 200, message: 'Deleted subscriber device' });
 });
 
 app.listen(PORT, '0.0.0.0', () => {
