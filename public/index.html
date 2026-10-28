@@ -123,6 +123,18 @@
       flex-wrap: wrap;
     }
 
+    .header-actions-bar {
+      display: flex;
+      align-items: center;
+      gap: 8px;
+      flex-wrap: wrap;
+      transition: all 0.2s ease;
+    }
+
+    .header-actions-bar.is-hidden {
+      display: none !important;
+    }
+
     /* Buttons */
     .btn {
       display: inline-flex;
@@ -664,19 +676,29 @@
       </div>
 
       <div class="header-actions">
-        <div id="userProfileHeader" style="display: none; align-items: center; gap: 8px; background: rgba(255, 255, 255, 0.08); padding: 5px 12px; border-radius: 999px; border: 1px solid var(--border);">
-          <span style="font-size: 0.86rem; font-weight: 600; color: #f8fafc;" id="userNameDisplay">👷 ช่าง: -</span>
-          <button class="btn btn-outline btn-sm" onclick="handleLogout()" style="padding: 2px 8px; font-size: 0.75rem; border-color: rgba(239, 68, 68, 0.4); color: #fca5a5;">🚪 ออกจากระบบ</button>
+        <div id="userProfileHeader" style="display: none; align-items: center; gap: 8px; background: rgba(255, 255, 255, 0.08); padding: 4px 10px; border-radius: 999px; border: 1px solid var(--border);">
+          <span style="font-size: 0.84rem; font-weight: 600; color: #f8fafc;" id="userNameDisplay">👷 ช่าง: -</span>
+          <button class="btn btn-outline btn-sm" onclick="handleLogout()" style="padding: 2px 7px; font-size: 0.72rem; border-color: rgba(239, 68, 68, 0.4); color: #fca5a5;">🚪 ออก</button>
         </div>
-        <button class="btn btn-outline btn-sm" id="soundToggleBtn" onclick="toggleSound()">
-          🔊 เสียงเตือน: เปิด
+
+        <button class="btn btn-outline btn-sm" id="toggleHeaderActionsBtn" onclick="toggleHeaderActions()" style="padding: 5px 10px; font-size: 0.8rem;">
+          ⚙️ เมนูตั้งค่า
         </button>
-        <button class="btn btn-primary btn-sm" id="pushSubBtn" onclick="enablePushNotifications()">
-          🔔 เปิดรับแจ้งเตือนบนเครื่องนี้
-        </button>
-        <button class="btn btn-outline btn-sm" id="adminAuthBtn" onclick="handleAdminBtnClick()">
-          🔒 แอดมิน
-        </button>
+
+        <div id="headerActionsBar" class="header-actions-bar">
+          <button class="btn btn-outline btn-sm" id="soundToggleBtn" onclick="toggleSound()">
+            🔊 เสียงเตือน: เปิด
+          </button>
+          <button class="btn btn-primary btn-sm" id="pushSubBtn" onclick="enablePushNotifications()">
+            🔔 เปิดรับแจ้งเตือนบนเครื่องนี้
+          </button>
+          <button class="btn btn-outline btn-sm" id="adminAuthBtn" onclick="handleAdminBtnClick()">
+            🔒 แอดมิน
+          </button>
+          <button class="btn btn-outline btn-sm" onclick="toggleHeaderActions(true)" style="color: var(--text-muted); padding: 4px 8px; font-size: 0.74rem; border-color: rgba(255,255,255,0.15);" title="ซ่อนแถบนี้">
+            ✕ ซ่อน
+          </button>
+        </div>
       </div>
     </div>
   </header>
@@ -743,11 +765,8 @@
   <main class="container">
     <!-- Navigation Tabs -->
     <div class="nav-tabs">
-      <button class="nav-tab active" id="tabBtnFeed" onclick="switchTab('feed', this)">
-        🔔 กระดานแจ้งเตือน & แจกงาน (<span id="notifCountBadge">0</span>)
-      </button>
-      <button class="nav-tab" id="tabBtnBacklog" onclick="switchTab('backlog', this)">
-        📋 หน้างานค้างซ่อม (<span id="backlogCountBadge">0</span>)
+      <button class="nav-tab active" id="tabBtnBacklog" onclick="switchTab('backlog', this)">
+        📋 รายการงานซ่อม (<span id="backlogCountBadge">0</span>)
       </button>
       
       <button class="nav-tab admin-only" id="tabBtnTestDispatch" style="display: none; border-color: rgba(59,130,246,0.4); color: #93c5fd;" onclick="switchTab('test-dispatch', this)">
@@ -767,45 +786,25 @@
       </button>
     </div>
 
-    <!-- TAB 1: LIVE FEED (Full-width, clean without Test Playground) -->
-    <section id="tab-feed" class="tab-pane active">
-      <div>
-        <!-- Task Scope Toggle: งานของฉัน vs งานทั้งหมด -->
-        <div class="scope-bar">
-          <button class="scope-btn active" id="scopeBtnMine" onclick="setTaskScope('mine')">
-            ⭐ งานของฉัน (<span id="myScopeCount">0</span>)
-          </button>
-          <button class="scope-btn" id="scopeBtnAll" onclick="setTaskScope('all')">
-            🌐 งานทั้งหมด (<span id="allScopeCount">0</span>)
-          </button>
-        </div>
-        <div style="display: flex; align-items: center; justify-content: space-between; margin-bottom: 14px; flex-wrap: wrap; gap: 10px;">
-          <div class="filter-bar" id="channelFilterBar" style="margin-bottom: 0;">
-            <button class="filter-chip active" onclick="setChannelFilter('all', this)">ทั้งหมด</button>
-          </div>
+    <!-- Hidden legacy notif container if referenced -->
+    <div id="notifList" style="display: none;"></div>
 
-          <button class="btn btn-outline btn-sm admin-only" id="clearAllBtn" style="display: none;" onclick="clearAllNotifications()">
-            🗑️ ล้างประวัติทั้งหมด
-          </button>
-        </div>
-
-        <div id="notifList" class="notif-list"></div>
-      </div>
-    </section>
-
-    <!-- TAB 1.5: DEDICATED BACKLOG PAGE (หน้างานค้างซ่อม) -->
-    <section id="tab-backlog" class="tab-pane">
+    <!-- MAIN: DEDICATED BACKLOG PAGE (หน้างานซ่อม) -->
+    <section id="tab-backlog" class="tab-pane active">
       <div class="card">
         <div class="card-header">
-          <div class="card-title">📋 รายการงานค้างซ่อม (แยกตามประเภทงาน: ไฟฟ้า / แอร์)</div>
+          <div class="card-title">📋 รายการงานแจ้งซ่อม (แยกตามประเภทงาน: ไฟฟ้า / แอร์)</div>
           <div id="backlogSummaryBadges" style="display:flex; gap:8px; flex-wrap:wrap;"></div>
         </div>
-        <!-- Scope Bar: งานของฉัน vs งานทั้งหมด ในหน้าค้างซ่อม -->
+        <!-- Scope Bar: งานของฉัน vs งานทั้งหมด -->
         <div class="scope-bar">
           <button class="scope-btn active" id="backlogScopeBtnMine" onclick="setBacklogTaskScope('mine')">
-            ⭐ งานค้างของฉัน (<span id="myBacklogScopeCount">0</span>)
+            ⭐ งานของฉัน (<span id="myBacklogScopeCount">0</span>)
           </button>
           <button class="scope-btn" id="backlogScopeBtnAll" onclick="setBacklogTaskScope('all')">
+            🌐 งานทั้งหมด (<span id="allBacklogScopeCount">0</span>)
+          </button>
+        </div>
             🌐 งานค้างทั้งหมด (<span id="allBacklogScopeCount">0</span>)
           </button>
         </div>
@@ -1369,6 +1368,24 @@
       return false;
     }
 
+    function toggleHeaderActions(forceHide) {
+      const bar = document.getElementById('headerActionsBar');
+      const btn = document.getElementById('toggleHeaderActionsBtn');
+      if (!bar) return;
+      const isCurrentlyHidden = bar.classList.contains('is-hidden');
+      const shouldHide = forceHide !== undefined ? forceHide : !isCurrentlyHidden;
+
+      if (shouldHide) {
+        bar.classList.add('is-hidden');
+        if (btn) btn.innerHTML = '⚙️ ตั้งค่า (แสดง)';
+        localStorage.setItem('header_actions_hidden', 'true');
+      } else {
+        bar.classList.remove('is-hidden');
+        if (btn) btn.innerHTML = '✕ ซ่อนเมนู';
+        localStorage.setItem('header_actions_hidden', 'false');
+      }
+    }
+
     function setTaskScope(scope) {
       state.taskScope = scope;
       document.getElementById('scopeBtnMine')?.classList.toggle('active', scope === 'mine');
@@ -1522,7 +1539,7 @@
           state.adminToken = '';
           syncPushSubscriptionUser();
           updateAdminUI();
-          switchTab('feed', document.getElementById('tabBtnFeed'));
+          switchTab('backlog', document.getElementById('tabBtnBacklog'));
           showToast('🔒 ออกจากระบบแอดมินแล้ว', 'ซ่อนเมนูจัดการ Token และเชื่อมต่อ API แล้ว');
         }
       } else {
@@ -1658,6 +1675,8 @@
     }
 
     function switchTab(tabId, btn) {
+      if (tabId === 'feed') tabId = 'backlog';
+      if (!btn && tabId === 'backlog') btn = document.getElementById('tabBtnBacklog');
       if ((tabId === 'tokens' || tabId === 'docs' || tabId === 'techs' || tabId === 'test-dispatch' || tabId === 'bot') && !state.isAdmin) {
         handleAdminBtnClick();
         return;
@@ -1674,6 +1693,13 @@
 
     // Load initial data
     async function initApp() {
+      const savedHidden = localStorage.getItem('header_actions_hidden');
+      if (savedHidden === 'true' || (savedHidden === null && window.Notification && Notification.permission === 'granted')) {
+        toggleHeaderActions(true);
+      } else {
+        toggleHeaderActions(false);
+      }
+
       checkUserAuth();
       if (state.currentUser) {
         verifyUserStatus();
@@ -1924,9 +1950,9 @@
         if (res.ok) {
           showToast('🚀 ยิงแจ้งเตือนสำเร็จ!', assigneeStr ? `มอบหมายให้: ${assigneeStr}` : 'ส่งแบบงานทั่วไป');
           playNotificationSound(priority);
-          // Auto switch to Feed tab after short pause
+          // Auto switch to Backlog tab after short pause
           setTimeout(() => {
-            switchTab('feed', document.getElementById('tabBtnFeed'));
+            switchTab('backlog', document.getElementById('tabBtnBacklog'));
           }, 600);
         } else {
           alert(data.message || 'เกิดข้อผิดพลาดในการส่งแจ้งเตือน');
@@ -2172,7 +2198,10 @@
     }
 
     function renderBacklogView() {
-      const allBacklog = state.notifications.filter(n => (n.channelName || '').includes('งานค้าง'));
+      let allBacklog = state.notifications.filter(n => (n.channelName || '').includes('งานค้าง') || n.isTask || (n.title || '').includes('[ไฟฟ้า]') || (n.title || '').includes('[แอร์]'));
+      if (allBacklog.length === 0 && state.notifications.length > 0) {
+        allBacklog = state.notifications;
+      }
       const myBacklogCount = allBacklog.filter(n => isAssignedToCurrentUser(n)).length;
 
       const myBacklogScopeSpan = document.getElementById('myBacklogScopeCount');
@@ -2805,6 +2834,9 @@ print(r.json())`;
         }
         showToast('🔔 เปิดรับแจ้งเตือนสำเร็จ!', 'เครื่องนี้พร้อมรับเสียงเตือนและ Push Notification ทันทีที่มีงานใหม่');
         playNotificationSound('normal');
+        setTimeout(() => {
+          toggleHeaderActions(true);
+        }, 1200);
       } catch (err) {
         console.error('Push subscription error:', err);
         alert('เกิดข้อผิดพลาดในการลงทะเบียนรับแจ้งเตือน:\n' + (err.message || err));
