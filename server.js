@@ -123,7 +123,7 @@ const db = loadDB();
 
 // Configure Web Push with VAPID keys
 webpush.setVapidDetails(
-  'mailto:admin@notify.local',
+  'mailto:admin@powerenergy.com',
   db.vapidKeys.publicKey,
   db.vapidKeys.privateKey
 );
@@ -631,8 +631,8 @@ async function handleNotify(req, res) {
       body: notification.assignee
         ? `[ผู้รับผิดชอบ: ${notification.assignee}] ${notification.message}`
         : notification.message,
-      icon: '/icon-192.svg',
-      badge: '/icon-192.svg',
+      icon: '/icon-192.png',
+      badge: '/icon-192.png',
       image: notification.image,
       tag: notification.id,
       priority: notification.priority,

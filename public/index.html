@@ -1166,12 +1166,20 @@
 
     function isAssignedToCurrentUser(item, user = state.currentUser) {
       if (!user || !user.id) return true;
-      if (matchAssignee(item.assignee, user)) return true;
-      const uname = String(user.name || '').trim();
-      const cleanUname = uname.replace(/^(นาย|นาง|น\.ส\.)\s*/, '').trim();
-      const textToSearch = `${item.title || ''} ${item.message || ''}`;
-      if (uname && textToSearch.includes(uname)) return true;
-      if (cleanUname && cleanUname.length >= 2 && textToSearch.includes(cleanUname)) return true;
+
+      // 1. If task has assignee, strictly match against assignee field only!
+      if (item.assignee && String(item.assignee).trim()) {
+        return matchAssignee(item.assignee, user);
+      }
+
+      // 2. Only if no assignee is set, check if technician ID or full name is mentioned in title
+      const uid = String(user.id).trim().toLowerCase();
+      const uname = String(user.name || '').trim().toLowerCase();
+      const title = String(item.title || '').toLowerCase();
+
+      if (uid && title.includes(uid)) return true;
+      if (uname && title.includes(uname)) return true;
+
       return false;
     }
 
@@ -1386,11 +1394,30 @@
       renderNotifications();
     }
 
-    // Synthesize crisp notification chime using Web Audio API (no external MP3 needed)
+    // Web Audio unlock for iOS Safari (requires user gesture)
+    let globalAudioCtx = null;
+    function unlockAudio() {
+      if (!globalAudioCtx) {
+        try {
+          globalAudioCtx = new (window.AudioContext || window.webkitAudioContext)();
+        } catch (e) {}
+      }
+      if (globalAudioCtx && globalAudioCtx.state === 'suspended') {
+        globalAudioCtx.resume();
+      }
+    }
+    window.addEventListener('click', unlockAudio, { passive: true });
+    window.addEventListener('touchstart', unlockAudio, { passive: true });
+
+    // Synthesize crisp notification chime using Web Audio API
     function playNotificationSound(priority = 'normal') {
       if (!state.soundEnabled) return;
       try {
-        const ctx = new (window.AudioContext || window.webkitAudioContext)();
+        unlockAudio();
+        const ctx = globalAudioCtx || new (window.AudioContext || window.webkitAudioContext)();
+        if (ctx.state === 'suspended') {
+          ctx.resume();
+        }
         const now = ctx.currentTime;
 
         const freqs = priority === 'urgent' ? [880, 1174, 880, 1174] : [587.33, 880];
@@ -1399,7 +1426,7 @@
           const gain = ctx.createGain();
           osc.type = priority === 'urgent' ? 'triangle' : 'sine';
           osc.frequency.setValueAtTime(f, now + idx * 0.13);
-          gain.gain.setValueAtTime(0.22, now + idx * 0.13);
+          gain.gain.setValueAtTime(0.25, now + idx * 0.13);
           gain.gain.exponentialRampToValueAtTime(0.001, now + idx * 0.13 + 0.25);
           osc.connect(gain);
           gain.connect(ctx.destination);
@@ -2090,12 +2117,17 @@ print(r.json())`;
         renderChannelFilters();
         renderNotifications();
         renderBacklogView();
-        playNotificationSound(notif.priority);
-        showToast(`🔔 ${notif.title}`, notif.message);
 
-        // Also trigger browser desktop notification if granted and Service Worker didn't already show it
-        if ('Notification' in window && Notification.permission === 'granted' && !navigator.serviceWorker?.controller) {
-          new Notification(notif.title, { body: notif.message, icon: '/icon-192.svg' });
+        // Only chime and show toast popup if this task is assigned to ME, or if general broadcast, or if Admin
+        const isForMe = isAssignedToCurrentUser(notif) || !notif.assignee || state.isAdmin;
+        if (isForMe) {
+          playNotificationSound(notif.priority);
+          showToast(`🔔 ${notif.title}`, notif.message);
+
+          // Also trigger browser desktop notification if granted and Service Worker didn't already show it
+          if ('Notification' in window && Notification.permission === 'granted' && !navigator.serviceWorker?.controller) {
+            new Notification(notif.title, { body: notif.message, icon: '/icon-192.svg' });
+          }
         }
       });
 
@@ -2152,6 +2184,20 @@ print(r.json())`;
     }
 
     async function enablePushNotifications() {
+      // Check if iOS and opened in regular Safari tab (not added to Home screen)
+      const isIOS = /iphone|ipad|ipod/i.test(navigator.userAgent) || (navigator.platform === 'MacIntel' && navigator.maxTouchPoints > 1);
+      const isStandalone = window.navigator.standalone || window.matchMedia('(display-mode: standalone)').matches;
+
+      if (isIOS && !isStandalone) {
+        alert(
+          '🍏 สำหรับ iPhone / iPad:\n\n' +
+          'Apple กำหนดว่าต้องกดปุ่ม "แชร์" (ไอคอนสี่เหลี่ยมลูกศรชี้ขึ้น 📤) ที่แถบล่างของ Safari\n' +
+          'แล้วเลือก "เพิ่มไปยังหน้าจอโฮม" (Add to Home Screen ➕) ก่อนครับ\n\n' +
+          'เมื่อเปิดจากไอคอนบนหน้าจอโฮม จึงจะสามารถเปิดรับแจ้งเตือนได้เหมือนแอพจริงครับ'
+        );
+        return;
+      }
+
       if (!('Notification' in window)) {
         alert('บราวเซอร์นี้ไม่รองรับระบบ Push Notification');
         return;
@@ -2159,13 +2205,18 @@ print(r.json())`;
 
       const permission = await Notification.requestPermission();
       if (permission !== 'granted') {
-        alert('กรุณากดอนุญาต (Allow) การแจ้งเตือนในบราวเซอร์');
+        alert('กรุณากดอนุญาต (Allow) การแจ้งเตือนในป๊อปอัปของระบบ');
         return;
       }
 
       try {
         const reg = await navigator.serviceWorker.register('/sw.js');
         await navigator.serviceWorker.ready;
+
+        if (!reg.pushManager) {
+          showToast('🔔 เปิดรับการแจ้งเตือนในหน้าเว็บสำเร็จ', 'พร้อมแจ้งเตือนแบบ Real-time ทันที');
+          return;
+        }
 
         const sub = await reg.pushManager.subscribe({
           userVisibleOnly: true,
@@ -2177,7 +2228,9 @@ print(r.json())`;
           headers: { 'Content-Type': 'application/json' },
           body: JSON.stringify({
             subscription: sub,
-            deviceName: navigator.userAgent.slice(0, 60)
+            deviceName: navigator.userAgent.slice(0, 60),
+            userId: state.currentUser?.id || null,
+            userName: state.currentUser?.name || null
           })
         });
 
@@ -2189,7 +2242,7 @@ print(r.json())`;
         playNotificationSound('normal');
       } catch (err) {
         console.error('Push subscription error:', err);
-        showToast('🔔 เปิดรับการแจ้งเตือนผ่านหน้าเว็บสำเร็จ', 'พร้อมแจ้งเตือนแบบ Real-time ทันที');
+        showToast('🔔 เปิดรับการแจ้งเตือนในหน้าเว็บสำเร็จ', 'พร้อมแจ้งเตือนแบบ Real-time ทันที');
       }
     }
 

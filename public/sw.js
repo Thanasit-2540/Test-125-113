@@ -19,8 +19,8 @@ self.addEventListener('push', (event) => {
   const title = data.title || 'NotifyHub แจ้งเตือน';
   const options = {
     body: data.body || '',
-    icon: data.icon || '/icon-192.svg',
-    badge: data.badge || '/icon-192.svg',
+    icon: '/icon-192.png',
+    badge: '/icon-192.png',
     image: data.image || undefined,
     tag: data.tag || `notif-${Date.now()}`,
     renotify: true,
