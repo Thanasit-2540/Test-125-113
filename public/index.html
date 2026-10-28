@@ -778,9 +778,6 @@
       <button class="nav-tab admin-only" id="tabBtnTokens" style="display: none;" onclick="switchTab('tokens', this)">
         🔑 ออก Token & ห้องแจ้งเตือน
       </button>
-      <button class="nav-tab admin-only" id="tabBtnBot" style="display: none; border-color: rgba(168,85,247,0.4); color: #c084fc;" onclick="switchTab('bot', this)">
-        🤖 ตั้งค่าบอท
-      </button>
       <button class="nav-tab admin-only" id="tabBtnDocs" style="display: none;" onclick="switchTab('docs', this)">
         💻 โค้ดเชื่อมต่อ API (cURL / Python / Sheets)
       </button>
@@ -805,13 +802,11 @@
             🌐 งานทั้งหมด (<span id="allBacklogScopeCount">0</span>)
           </button>
         </div>
-            🌐 งานค้างทั้งหมด (<span id="allBacklogScopeCount">0</span>)
-          </button>
-        </div>
         <div class="filter-bar" id="backlogTechFilterBar">
           <button class="filter-chip active" onclick="setBacklogTechFilter('all', this)">📋 ทั้งหมด</button>
           <button class="filter-chip" onclick="setBacklogTechFilter('elec', this)">⚡ งานไฟฟ้า (<span id="elecCountSpan">0</span>)</button>
           <button class="filter-chip" onclick="setBacklogTechFilter('air', this)">❄️ งานแอร์ (<span id="airCountSpan">0</span>)</button>
+          <button class="filter-chip" onclick="setBacklogTechFilter('pending_admin', this)" style="border-color: rgba(245, 158, 11, 0.4); color: #fbbf24;">⚠️ รอมอบหมาย (<span id="pendingAdminCountSpan">0</span>)</button>
           <button class="filter-chip" onclick="setBacklogTechFilter('overdue', this)">🔴 เฉพาะงานเกินกำหนด</button>
         </div>
         <div id="backlogList" class="notif-list"></div>
@@ -1057,127 +1052,6 @@
         </div>
       </div>
     </section>
-
-    <!-- TAB: BOT MANAGEMENT & AUTO-ACCEPT CONTROL -->
-    <section id="tab-bot" class="tab-pane">
-      <div class="card" style="margin-bottom: 20px;">
-        <div class="card-header">
-          <div class="card-title" style="color: #c084fc;">🤖 จัดการบอท & ตั้งค่าการรับงาน (Bot Control Center)</div>
-          <button class="btn btn-outline btn-sm" onclick="loadBotTab()">🔄 รีเฟรชสถานะบอท</button>
-        </div>
-        <p style="color: var(--text-muted); font-size: 0.88rem; margin-bottom: 20px; line-height: 1.6;">
-          ตั้งค่าการทำงานของบอทตรวจสอบใบแจ้งซ่อมจากระบบโรงงาน คุณสามารถเลือกให้ <strong>"ยังไม่ต้องรับงาน"</strong> เพื่อเริ่มแจกจ่ายงานที่มีระบบก่อนตามหัวข้อและชื่อบุคคล หรือเปิดให้บอทกดรับงานลงระบบโรงงานอัตโนมัติเมื่อพร้อม
-        </p>
-
-        <!-- Primary Mode Selector: Auto-Accept vs Not Accept Yet -->
-        <div style="background: var(--bg-input); padding: 18px; border-radius: 14px; border: 1px solid var(--border); margin-bottom: 24px;">
-          <div style="font-weight: 600; font-size: 0.98rem; margin-bottom: 12px; color: #f8fafc;">
-            ⚡ โหมดการรับงานของบอทในระบบโรงงาน:
-          </div>
-          
-          <div style="display: grid; grid-template-columns: repeat(auto-fit, minmax(280px, 1fr)); gap: 14px; margin-bottom: 16px;">
-            <!-- Option 1: ยังไม่ต้องรับงาน -->
-            <label id="botModeOptionFalse" style="display: flex; gap: 12px; padding: 16px; border-radius: 12px; background: rgba(239,68,68,0.08); border: 2px solid #ef4444; cursor: pointer; transition: all 0.2s;">
-              <input type="radio" name="botAutoAcceptRadio" value="false" checked onchange="onBotModeChange()" style="margin-top: 4px;" />
-              <div>
-                <div style="font-weight: 700; color: #fca5a5; font-size: 0.98rem; margin-bottom: 4px;">
-                  🛑 ยังไม่ต้องรับงาน (ปิดการรับงานอัตโนมัติ)
-                </div>
-                <div style="font-size: 0.82rem; color: #cbd5e1; line-height: 1.5;">
-                  บอทจะ <strong>ไม่กดรับเรื่องในระบบโรงงาน</strong> (ฐานข้อมูลโรงงานจะไม่ถูกแก้ไข) เพื่อเริ่มแจกจ่ายงานที่มีระบบก่อนตามหัวข้อและชื่อบุคคล
-                </div>
-                <span class="pill" style="margin-top: 8px; background: rgba(239,68,68,0.2); color: #fca5a5; font-size: 0.74rem;">⭐ แนะนำ / ใช้งานอยู่</span>
-              </div>
-            </label>
-
-            <!-- Option 2: เปิดรับงานอัตโนมัติ -->
-            <label id="botModeOptionTrue" style="display: flex; gap: 12px; padding: 16px; border-radius: 12px; background: rgba(34,197,94,0.04); border: 1px solid var(--border); cursor: pointer; transition: all 0.2s;">
-              <input type="radio" name="botAutoAcceptRadio" value="true" onchange="onBotModeChange()" style="margin-top: 4px;" />
-              <div>
-                <div style="font-weight: 700; color: #86efac; font-size: 0.98rem; margin-bottom: 4px;">
-                  ⚡ เปิดรับงานอัตโนมัติ (Auto-Accept)
-                </div>
-                <div style="font-size: 0.82rem; color: #cbd5e1; line-height: 1.5;">
-                  เมื่อพบคีย์เวิร์ดตรงเงื่อนไข บอทจะกดรับเรื่องลงชื่อ THANASIT และมอบหมายช่างในระบบโรงงานทันที
-                </div>
-              </div>
-            </label>
-          </div>
-
-          <!-- Category Toggles -->
-          <div style="display: flex; gap: 20px; flex-wrap: wrap; padding-top: 14px; border-top: 1px solid rgba(255,255,255,0.08); margin-bottom: 16px;">
-            <label style="display: flex; align-items: center; gap: 8px; cursor: pointer; font-size: 0.9rem;">
-              <input type="checkbox" id="botElecEnabledCb" checked />
-              <span>⚡ ตรวจสอบหมวดไฟฟ้า / โทรศัพท์</span>
-            </label>
-            <label style="display: flex; align-items: center; gap: 8px; cursor: pointer; font-size: 0.9rem;">
-              <input type="checkbox" id="botAirEnabledCb" />
-              <span>❄️ ตรวจสอบหมวดแอร์</span>
-            </label>
-          </div>
-
-          <button type="button" class="btn btn-primary" onclick="saveBotSettingsFromUI()" id="saveBotSettingsBtn">
-            💾 บันทึกการตั้งค่าบอท
-          </button>
-        </div>
-
-        <!-- Bot Live Status & Quick Action Buttons -->
-        <div class="grid-2" style="gap: 16px; margin-bottom: 20px;">
-          <!-- Live Status Card -->
-          <div style="background: var(--bg-input); padding: 16px; border-radius: 12px; border: 1px solid var(--border);">
-            <div style="font-weight: 600; font-size: 0.92rem; margin-bottom: 10px; color: #38bdf8;">
-              📊 สถานะบอท (Live Bot Status)
-            </div>
-            <div style="display: flex; flex-direction: column; gap: 8px; font-size: 0.86rem;">
-              <div style="display: flex; justify-content: space-between;">
-                <span style="color: var(--text-muted);">สถานะการเชื่อมต่อ:</span>
-                <span id="botOnlineStatusBadge" style="font-weight: 600; color: #94a3b8;">กำลังตรวจสอบ...</span>
-              </div>
-              <div style="display: flex; justify-content: space-between;">
-                <span style="color: var(--text-muted);">สถานะปัจจุบัน:</span>
-                <span id="botCurrentTaskText" style="font-weight: 500; color: #f8fafc;">-</span>
-              </div>
-              <div style="display: flex; justify-content: space-between;">
-                <span style="color: var(--text-muted);">ตรวจสอบล่าสุด:</span>
-                <span id="botLastCheckText" style="color: var(--text-muted);">-</span>
-              </div>
-              <div style="display: flex; justify-content: space-between;">
-                <span style="color: var(--text-muted);">คิวรอรับเรื่องในโรงงาน:</span>
-                <span id="botPendingCountText" style="font-weight: 600; color: #f59e0b;">0 รายการ</span>
-              </div>
-            </div>
-          </div>
-
-          <!-- Quick Action Buttons -->
-          <div style="background: var(--bg-input); padding: 16px; border-radius: 12px; border: 1px solid var(--border); display: flex; flex-direction: column; justify-content: space-between;">
-            <div style="font-weight: 600; font-size: 0.92rem; margin-bottom: 10px; color: #38bdf8;">
-              🚀 สั่งการบอททันที (Quick Commands)
-            </div>
-            <div style="display: flex; flex-direction: column; gap: 8px;">
-              <button type="button" class="btn btn-outline btn-sm" onclick="triggerBotCheckNow()" id="btnBotCheckNow" style="justify-content: center;">
-                🔍 สั่งบอทเช็คงานใหม่เดี๋ยวนี้
-              </button>
-              <button type="button" class="btn btn-outline btn-sm" onclick="triggerBotSyncBacklog()" id="btnBotSyncBacklog" style="justify-content: center;">
-                🔄 ซิงค์งานค้างซ่อมขึ้นเว็บทันที
-              </button>
-              <button type="button" class="btn btn-outline btn-sm" onclick="triggerBotUnlockUser()" id="btnBotUnlockUser" style="justify-content: center; color: #f59e0b; border-color: rgba(245,158,11,0.3);">
-                🔓 ปลดล็อกผู้ใช้ THANASIT ในโรงงาน
-              </button>
-            </div>
-          </div>
-        </div>
-
-        <!-- Recent Bot Logs -->
-        <div style="background: #020617; border-radius: 12px; border: 1px solid var(--border); padding: 14px;">
-          <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 8px;">
-            <div style="font-size: 0.85rem; font-weight: 600; color: #94a3b8;">📜 บันทึกการทำงานล่าสุดของบอท:</div>
-          </div>
-          <div id="botRecentLogsBox" style="font-family: monospace; font-size: 0.78rem; color: #86efac; max-height: 180px; overflow-y: auto; display: flex; flex-direction: column; gap: 4px;">
-            <div style="color: var(--text-muted);">ไม่มีบันทึกการทำงาน</div>
-          </div>
-        </div>
-      </div>
-    </section>
   </main>
 
   <div id="toast-container"></div>
@@ -1351,6 +1225,11 @@
 
     function isAssignedToCurrentUser(item, user = state.currentUser) {
       if (!user || !user.id) return true;
+
+      // If user is Admin and task is pending admin review, show in Admin's scope
+      if (state.isAdmin && (item.taskStatus === 'pending_admin' || (item.title || '').includes('[รอแอดมินพิจารณา]'))) {
+        return true;
+      }
 
       // 1. If task has assignee, strictly match against assignee field only!
       if (item.assignee && String(item.assignee).trim()) {
@@ -1677,7 +1556,7 @@
     function switchTab(tabId, btn) {
       if (tabId === 'feed') tabId = 'backlog';
       if (!btn && tabId === 'backlog') btn = document.getElementById('tabBtnBacklog');
-      if ((tabId === 'tokens' || tabId === 'docs' || tabId === 'techs' || tabId === 'test-dispatch' || tabId === 'bot') && !state.isAdmin) {
+      if ((tabId === 'tokens' || tabId === 'docs' || tabId === 'techs' || tabId === 'test-dispatch') && !state.isAdmin) {
         handleAdminBtnClick();
         return;
       }
@@ -1688,7 +1567,6 @@
       if (btn) btn.classList.add('active');
       if (tabId === 'techs') loadTechniciansList();
       if (tabId === 'test-dispatch') initTestDispatchTab();
-      if (tabId === 'bot') loadBotTab();
     }
 
     // Load initial data
@@ -1967,218 +1845,6 @@
       }
     }
 
-    // ==========================================
-    // BOT MANAGEMENT & AUTO-ACCEPT CONTROL
-    // ==========================================
-    let currentBotConfig = { autoAccept: false, elecEnabled: true, airEnabled: false };
-
-    async function loadBotTab() {
-      const token = state.adminToken || sessionStorage.getItem('notifyhub_admin_token') || '';
-      const headers = token ? { 'Authorization': `Bearer adm_${token}` } : {};
-
-      // 1. Load config
-      try {
-        const res = await fetch('/api/bot/config', { headers });
-        const data = await res.json();
-        if (data && data.config) {
-          currentBotConfig = data.config;
-          const autoAccept = Boolean(data.config.autoAccept);
-          const radio = document.querySelector(`input[name="botAutoAcceptRadio"][value="${autoAccept}"]`);
-          if (radio) radio.checked = true;
-          onBotModeChange();
-
-          const elecCb = document.getElementById('botElecEnabledCb');
-          if (elecCb) elecCb.checked = data.config.elecEnabled !== false;
-
-          const airCb = document.getElementById('botAirEnabledCb');
-          if (airCb) airCb.checked = Boolean(data.config.airEnabled);
-        }
-      } catch (err) {
-        console.warn('Load bot config error:', err);
-      }
-
-      // 2. Load bot live status
-      try {
-        const res = await fetch('/api/bot/status');
-        const data = await res.json();
-        const onlineBadge = document.getElementById('botOnlineStatusBadge');
-        const taskText = document.getElementById('botCurrentTaskText');
-        const lastCheckText = document.getElementById('botLastCheckText');
-        const pendingCountText = document.getElementById('botPendingCountText');
-        const logsBox = document.getElementById('botRecentLogsBox');
-
-        if (onlineBadge) {
-          if (data.online) {
-            onlineBadge.innerHTML = '🟢 ออนไลน์ (เปิดทำงานอยู่)';
-            onlineBadge.style.color = '#4ade80';
-          } else {
-            onlineBadge.innerHTML = '⚪ ออฟไลน์ (ยังไม่ได้เปิด Daemon บน PC)';
-            onlineBadge.style.color = '#94a3b8';
-          }
-        }
-
-        const bState = data.state || {};
-        if (taskText) taskText.textContent = bState.currentTask || 'พร้อมทำงาน';
-        if (lastCheckText) {
-          lastCheckText.textContent = bState.lastCheckAt
-            ? new Date(bState.lastCheckAt).toLocaleTimeString('th-TH') + ' น.'
-            : 'ยังไม่เคยเช็ค';
-        }
-        if (pendingCountText) {
-          const pending = bState.pendingJobs || [];
-          pendingCountText.textContent = `${pending.length} รายการ`;
-        }
-
-        if (logsBox && bState.logs && bState.logs.length > 0) {
-          logsBox.innerHTML = bState.logs.slice(0, 15).map(l => `
-            <div><span style="color: #64748b;">[${escapeHtml(l.time || '')}]</span> ${escapeHtml(l.message || l.line || '')}</div>
-          `).join('');
-        }
-      } catch (err) {
-        console.warn('Load bot status error:', err);
-      }
-    }
-
-    function onBotModeChange() {
-      const val = document.querySelector('input[name="botAutoAcceptRadio"]:checked')?.value === 'true';
-      const optFalse = document.getElementById('botModeOptionFalse');
-      const optTrue = document.getElementById('botModeOptionTrue');
-
-      if (val) {
-        if (optFalse) {
-          optFalse.style.borderColor = 'var(--border)';
-          optFalse.style.background = 'rgba(255,255,255,0.02)';
-        }
-        if (optTrue) {
-          optTrue.style.borderColor = '#22c55e';
-          optTrue.style.background = 'rgba(34,197,94,0.1)';
-        }
-      } else {
-        if (optFalse) {
-          optFalse.style.borderColor = '#ef4444';
-          optFalse.style.background = 'rgba(239,68,68,0.1)';
-        }
-        if (optTrue) {
-          optTrue.style.borderColor = 'var(--border)';
-          optTrue.style.background = 'rgba(255,255,255,0.02)';
-        }
-      }
-    }
-
-    async function saveBotSettingsFromUI() {
-      const btn = document.getElementById('saveBotSettingsBtn');
-      const autoAccept = document.querySelector('input[name="botAutoAcceptRadio"]:checked')?.value === 'true';
-      const elecEnabled = document.getElementById('botElecEnabledCb')?.checked ?? true;
-      const airEnabled = document.getElementById('botAirEnabledCb')?.checked ?? false;
-
-      if (btn) {
-        btn.disabled = true;
-        btn.textContent = '⏳ กำลังบันทึกการตั้งค่า...';
-      }
-
-      try {
-        const token = state.adminToken || sessionStorage.getItem('notifyhub_admin_token') || '';
-        const res = await fetch('/api/bot/config', {
-          method: 'POST',
-          headers: {
-            'Content-Type': 'application/json',
-            ...(token ? { 'Authorization': `Bearer adm_${token}` } : {})
-          },
-          body: JSON.stringify({
-            autoAccept,
-            elecEnabled,
-            airEnabled
-          })
-        });
-
-        const data = await res.json();
-        if (res.ok) {
-          const modeMsg = autoAccept
-            ? 'เปิดให้บอทรับงานอัตโนมัติแล้ว'
-            : 'ตั้งค่า "ยังไม่ต้องรับงาน" สำเร็จ (แจกจ่ายงานที่มีระบบก่อน)';
-          showToast('🤖 บันทึกการตั้งค่าบอทสำเร็จ!', modeMsg);
-          loadBotTab();
-        } else {
-          alert(data.message || 'บันทึกไม่สำเร็จ');
-        }
-      } catch (err) {
-        alert('ไม่สามารถเชื่อมต่อกับเซิร์ฟเวอร์เพื่อบันทึกการตั้งค่าได้');
-      } finally {
-        if (btn) {
-          btn.disabled = false;
-          btn.textContent = '💾 บันทึกการตั้งค่าบอท';
-        }
-      }
-    }
-
-    async function triggerBotCheckNow() {
-      const btn = document.getElementById('btnBotCheckNow');
-      if (btn) { btn.disabled = true; btn.textContent = '⏳ กำลังสั่งบอทเช็คงาน...'; }
-      try {
-        const token = state.adminToken || sessionStorage.getItem('notifyhub_admin_token') || '';
-        const res = await fetch('/api/bot/check-now', {
-          method: 'POST',
-          headers: token ? { 'Authorization': `Bearer adm_${token}` } : {}
-        });
-        const data = await res.json();
-        if (res.ok) {
-          showToast('🔍 สั่งบอทเช็คงานสำเร็จ', 'บอทกำลังตรวจสอบใบแจ้งซ่อมใหม่จากระบบโรงงาน...');
-          setTimeout(loadBotTab, 1500);
-        } else {
-          alert(data.message || 'บอทไม่ได้เปิดทำงานอยู่');
-        }
-      } catch (err) {
-        alert('ไม่สามารถติดต่อ Bot Daemon ได้');
-      } finally {
-        if (btn) { btn.disabled = false; btn.textContent = '🔍 สั่งบอทเช็คงานใหม่เดี๋ยวนี้'; }
-      }
-    }
-
-    async function triggerBotSyncBacklog() {
-      const btn = document.getElementById('btnBotSyncBacklog');
-      if (btn) { btn.disabled = true; btn.textContent = '⏳ กำลังสั่งซิงค์งาน...'; }
-      try {
-        const token = state.adminToken || sessionStorage.getItem('notifyhub_admin_token') || '';
-        const res = await fetch('/api/bot/sync-backlog', {
-          method: 'POST',
-          headers: token ? { 'Authorization': `Bearer adm_${token}` } : {}
-        });
-        const data = await res.json();
-        if (res.ok) {
-          showToast('🔄 สั่งซิงค์งานค้างซ่อมสำเร็จ', 'บอทกำลังดึงข้อมูลและอัปเดตขึ้นเว็บ...');
-          setTimeout(loadBotTab, 2000);
-        } else {
-          alert(data.message || 'บอทไม่ได้เปิดทำงานอยู่');
-        }
-      } catch (err) {
-        alert('ไม่สามารถติดต่อ Bot Daemon ได้');
-      } finally {
-        if (btn) { btn.disabled = false; btn.textContent = '🔄 ซิงค์งานค้างซ่อมขึ้นเว็บทันที'; }
-      }
-    }
-
-    async function triggerBotUnlockUser() {
-      const btn = document.getElementById('btnBotUnlockUser');
-      if (btn) { btn.disabled = true; btn.textContent = '⏳ กำลังปลดล็อก...'; }
-      try {
-        const token = state.adminToken || sessionStorage.getItem('notifyhub_admin_token') || '';
-        const res = await fetch('/api/bot/unlock-user', {
-          method: 'POST',
-          headers: token ? { 'Authorization': `Bearer adm_${token}` } : {}
-        });
-        const data = await res.json();
-        if (res.ok) {
-          showToast('🔓 ปลดล็อกสำเร็จ!', 'ปลดล็อกสถานะผู้ใช้ THANASIT (isexist = 0) ในโปรแกรมโรงงานเรียบร้อยแล้ว');
-        } else {
-          alert(data.message || 'ปลดล็อกไม่สำเร็จ');
-        }
-      } catch (err) {
-        alert('ไม่สามารถติดต่อโปรแกรมปลดล็อกได้');
-      } finally {
-        if (btn) { btn.disabled = false; btn.textContent = '🔓 ปลดล็อกผู้ใช้ THANASIT ในโรงงาน'; }
-      }
-    }
-
     function renderAll() {
       renderChannelFilters();
       renderNotifications();
@@ -2226,6 +1892,10 @@
       const airSpan = document.getElementById('airCountSpan');
       if (airSpan) airSpan.textContent = airJobs.length;
 
+      const pendingAdminJobs = baseList.filter(n => n.taskStatus === 'pending_admin' || (n.title || '').includes('[รอแอดมินพิจารณา]'));
+      const pendingAdminSpan = document.getElementById('pendingAdminCountSpan');
+      if (pendingAdminSpan) pendingAdminSpan.textContent = pendingAdminJobs.length;
+
       const overdueCount = baseList.filter(n => n.priority === 'urgent').length;
       const normalCount = baseList.length - overdueCount;
 
@@ -2234,6 +1904,7 @@
         summaryEl.innerHTML = `
           <span class="pill" style="background:rgba(245,158,11,0.2);color:#fcd34d;">⚡ ไฟฟ้า ${elecJobs.length} งาน</span>
           <span class="pill" style="background:rgba(6,182,212,0.2);color:#67e8f9;">❄️ แอร์ ${airJobs.length} งาน</span>
+          ${pendingAdminJobs.length > 0 ? `<span class="pill" style="background:rgba(239,68,68,0.25);color:#fca5a5;border:1px solid rgba(239,68,68,0.5);font-weight:700;">⚠️ รอมอบหมาย ${pendingAdminJobs.length} งาน</span>` : ''}
           <span class="pill pill-urgent">🔴 เกินกำหนด ${overdueCount} งาน</span>
           <span class="pill" style="background:rgba(6,199,85,0.2);color:#4ade80;">🟢 อยู่ในกำหนด ${normalCount} งาน</span>
         `;
@@ -2244,6 +1915,8 @@
         filtered = elecJobs;
       } else if (state.selectedBacklogFilter === 'air') {
         filtered = airJobs;
+      } else if (state.selectedBacklogFilter === 'pending_admin') {
+        filtered = pendingAdminJobs;
       } else if (state.selectedBacklogFilter === 'overdue') {
         filtered = allBacklog.filter(n => n.priority === 'urgent');
       }
@@ -2257,29 +1930,97 @@
       }
 
       listEl.innerHTML = filtered.map(n => {
-        const priorityBadge = n.priority === 'urgent'
-          ? `<span class="pill pill-urgent">🔴 เกินกำหนด</span>`
-          : `<span class="pill pill-high">🟡 กำลังดำเนินการ</span>`;
+        const isPendingAdmin = n.taskStatus === 'pending_admin' || (n.title || '').includes('[รอแอดมินพิจารณา]');
+        const docnoMatch = (n.title || '').match(/(IF\d+|[A-Z0-9]{7,10})/i);
+        const docno = (n.metadata && n.metadata.docno) || (docnoMatch ? docnoMatch[0] : '');
 
-        const assigneeBadge = n.assignee
-          ? `<span class="pill" style="background: rgba(59,130,246,0.2); color: #93c5fd;">👨‍🔧 ช่าง: ${escapeHtml(n.assignee)}</span>`
-          : '';
+        let priorityBadge = '';
+        let assigneeBadge = '';
+        let statusBar = '';
+        let adminActionSection = '';
+
+        if (isPendingAdmin) {
+          priorityBadge = `<span class="pill" style="background: rgba(239, 68, 68, 0.25); color: #fca5a5; border: 1px solid rgba(239, 68, 68, 0.6); font-weight: 700;">⚠️ รอแอดมินพิจารณา</span>`;
+          assigneeBadge = `<span class="pill" style="background: rgba(245, 158, 11, 0.2); color: #fcd34d; border: 1px solid rgba(245, 158, 11, 0.4);">⏳ รอแอดมินมอบหมาย</span>`;
+          statusBar = `<span style="font-size: 0.78rem; color: #fbbf24; font-weight: 600;">⚠️ ยังไม่ได้รับงานในระบบโรงงาน</span>`;
+
+          if (state.isAdmin) {
+            const techOptions = (state.technicians || [])
+              .filter(t => t.active !== false)
+              .map(t => `<option value="${escapeHtml(t.id)}">${escapeHtml(t.name)} (${escapeHtml(t.id)})</option>`)
+              .join('');
+
+            adminActionSection = `
+              <div class="admin-dispatch-box" style="margin-top: 14px; padding: 14px; background: rgba(245, 158, 11, 0.08); border: 1px solid rgba(245, 158, 11, 0.35); border-radius: 10px;">
+                <div style="display: flex; align-items: center; gap: 8px; font-weight: 600; color: #fbbf24; font-size: 0.88rem; margin-bottom: 6px;">
+                  <span>⚠️ รายละเอียดงานไม่ตรงกับคีย์เวิร์ดช่างคนใด (แอดมินโปรดพิจารณา)</span>
+                </div>
+                <div style="font-size: 0.8rem; color: #cbd5e1; margin-bottom: 12px; line-height: 1.5;">
+                  บอทจึงยังไม่ได้รับงานในระบบโรงงาน (ปล่อยค้างไว้ในระบบตามเดิม) หากต้องการรับงาน ให้เลือกช่างและกดปุ่มด้านล่างเพื่อรับเรื่องทันที:
+                </div>
+                <div style="display: flex; gap: 10px; flex-wrap: wrap; align-items: flex-end;">
+                  <div style="flex: 1; min-width: 200px;">
+                    <label style="display: block; font-size: 0.76rem; color: var(--text-muted); margin-bottom: 4px;">เลือกช่างผู้รับผิดชอบ:</label>
+                    <select id="admin_tech_${n.id}" class="form-control" style="font-size: 0.84rem; padding: 7px 10px;">
+                      <option value="">-- กรุณาเลือกช่าง --</option>
+                      ${techOptions}
+                    </select>
+                  </div>
+                  <div style="width: 90px;">
+                    <label style="display: block; font-size: 0.76rem; color: var(--text-muted); margin-bottom: 4px;">กำหนดเสร็จ:</label>
+                    <div style="display: flex; align-items: center; gap: 4px;">
+                      <input type="number" id="admin_days_${n.id}" class="form-control" value="7" min="1" max="90" style="font-size: 0.84rem; padding: 7px 6px; text-align: center;" />
+                      <span style="font-size: 0.78rem; color: var(--text-muted);">วัน</span>
+                    </div>
+                  </div>
+                  <div style="display: flex; gap: 8px;">
+                    <button class="btn btn-primary" id="btn_accept_${n.id}" onclick="handleAdminAcceptAndAssign('${n.id}', '${escapeHtml(docno)}')" style="background: #eab308; border-color: #ca8a04; color: #1e1e1e; font-weight: 700; padding: 7px 16px; font-size: 0.84rem;">
+                      ⚡ รับเรื่อง & มอบหมายช่าง
+                    </button>
+                  </div>
+                </div>
+              </div>
+            `;
+          } else {
+            adminActionSection = `
+              <div style="margin-top: 10px; padding: 10px 12px; background: rgba(245, 158, 11, 0.06); border: 1px solid rgba(245, 158, 11, 0.2); border-radius: 8px; font-size: 0.82rem; color: #fcd34d; display: flex; align-items: center; gap: 6px;">
+                <span>⏳ อาการไม่ตรงคีย์เวิร์ดช่าง กำลังรอแอดมิน/หัวหน้าพิจารณาเลือกช่างผู้รับผิดชอบ</span>
+              </div>
+            `;
+          }
+        } else {
+          priorityBadge = n.priority === 'urgent'
+            ? `<span class="pill pill-urgent">🔴 เกินกำหนด</span>`
+            : `<span class="pill pill-high">🟡 กำลังดำเนินการ</span>`;
+
+          assigneeBadge = n.assignee
+            ? `<span class="pill" style="background: rgba(59,130,246,0.2); color: #93c5fd;">👨‍🔧 ช่าง: ${escapeHtml(n.assignee)}</span>`
+            : '';
+
+          statusBar = `
+            <button class="status-btn ${n.taskStatus === 'in_progress' ? 'active-in_progress' : ''}" onclick="updateTaskStatus('${n.id}', 'in_progress')">🔧 ค้างซ่อม</button>
+            <button class="status-btn ${n.taskStatus === 'done' ? 'active-done' : ''}" onclick="updateTaskStatus('${n.id}', 'done')">✅ ซ่อมเสร็จแล้ว</button>
+          `;
+        }
+
+        const borderLeftColor = isPendingAdmin ? '#f59e0b' : (n.priority === 'urgent' ? '#ef4444' : '#f59e0b');
+        const cardBg = isPendingAdmin ? 'background: rgba(245, 158, 11, 0.03);' : '';
 
         return `
-          <div class="notif-card priority-${n.priority}" style="border-left-color: ${n.priority === 'urgent' ? '#ef4444' : '#f59e0b'}">
+          <div class="notif-card priority-${n.priority}" style="border-left-color: ${borderLeftColor}; ${cardBg}">
             <div class="notif-top">
               <div class="notif-badges">
                 ${priorityBadge}
                 ${assigneeBadge}
               </div>
               <div class="task-status-bar">
-                <button class="status-btn ${n.taskStatus === 'in_progress' ? 'active-in_progress' : ''}" onclick="updateTaskStatus('${n.id}', 'in_progress')">🔧 ค้างซ่อม</button>
-                <button class="status-btn ${n.taskStatus === 'done' ? 'active-done' : ''}" onclick="updateTaskStatus('${n.id}', 'done')">✅ ซ่อมเสร็จแล้ว</button>
+                ${statusBar}
               </div>
             </div>
             <div class="notif-title">${escapeHtml(n.title)}</div>
             <div class="notif-message">${escapeHtml(n.message)}</div>
             ${n.image ? `<img src="${escapeHtml(n.image)}" class="notif-image" alt="attachment" />` : ''}
+            ${adminActionSection}
           </div>
         `;
       }).join('');
@@ -2553,6 +2294,100 @@ print(r.json())`;
       });
     }
 
+    async function handleAdminAcceptAndAssign(notifId, docno) {
+      if (!state.isAdmin) {
+        openAdminModal();
+        return;
+      }
+
+      const selectEl = document.getElementById(`admin_tech_${notifId}`);
+      if (!selectEl || !selectEl.value) {
+        alert('กรุณาเลือกช่างผู้รับผิดชอบก่อนกดรับเรื่องครับ');
+        if (selectEl) selectEl.focus();
+        return;
+      }
+
+      const techId = selectEl.value;
+      const selectedOption = selectEl.options[selectEl.selectedIndex];
+      const techName = selectedOption ? selectedOption.text.replace(/\s*\([^)]*\)$/, '').trim() : techId;
+
+      const daysInput = document.getElementById(`admin_days_${notifId}`);
+      const estDays = parseInt(daysInput ? daysInput.value : '7', 10) || 7;
+
+      const btnEl = document.getElementById(`btn_accept_${notifId}`);
+      if (btnEl) {
+        btnEl.disabled = true;
+        btnEl.textContent = '⏳ กำลังบันทึกรับเรื่อง...';
+      }
+
+      try {
+        const res = await fetch('/api/admin/accept-and-assign', {
+          method: 'POST',
+          headers: getAdminHeaders(),
+          body: JSON.stringify({
+            notifId,
+            docno,
+            techId,
+            techName,
+            estimateDays: estDays
+          })
+        });
+
+        const data = await res.json();
+        if (!res.ok || !data.ok) {
+          throw new Error(data.message || 'บันทึกรับเรื่องไม่สำเร็จ');
+        }
+
+        showToast('✅ รับเรื่องสำเร็จ', `ใบแจ้ง ${docno} ถูกรับเรื่องและมอบหมายให้ ${techName} เรียบร้อยแล้ว`);
+
+        // Update local notification immediately
+        const notif = state.notifications.find(n => n.id === notifId || (n.metadata && n.metadata.docno === docno) || (n.title && n.title.includes(docno)));
+        if (notif) {
+          notif.taskStatus = 'in_progress';
+          notif.assignee = techName;
+          notif.title = notif.title.replace('⚠️ [รอแอดมินพิจารณา]', '⚡ [แอดมินมอบหมาย]');
+          notif.priority = 'high';
+        }
+        renderBacklogView();
+      } catch (err) {
+        alert('เกิดข้อผิดพลาด: ' + err.message);
+        if (btnEl) {
+          btnEl.disabled = false;
+          btnEl.textContent = '⚡ รับเรื่อง & มอบหมายช่าง';
+        }
+      }
+    }
+
+    async function handleAdminDismissUnmatched(notifId, docno) {
+      if (!state.isAdmin) {
+        openAdminModal();
+        return;
+      }
+
+      if (!confirm(`ยืนยัน "ไม่รับงาน" ใบแจ้ง ${docno || ''} ใช่หรือไม่?\n(ระบบโรงงานจะไม่รับงานนี้)`)) {
+        return;
+      }
+
+      try {
+        const res = await fetch('/api/admin/dismiss-unmatched', {
+          method: 'POST',
+          headers: getAdminHeaders(),
+          body: JSON.stringify({ notifId, docno })
+        });
+
+        const data = await res.json();
+        if (!res.ok || !data.ok) {
+          throw new Error(data.message || 'ปฏิเสธงานไม่สำเร็จ');
+        }
+
+        showToast('🗑️ ปฏิเสธงานเรียบร้อย', `ใบแจ้ง ${docno || ''} ถูกปฏิเสธไม่รับงานแล้ว`);
+        state.notifications = state.notifications.filter(n => n.id !== notifId);
+        renderBacklogView();
+      } catch (err) {
+        alert('เกิดข้อผิดพลาด: ' + err.message);
+      }
+    }
+
     async function deleteNotification(id) {
       await fetch(`/api/notifications/${id}`, { method: 'DELETE', headers: getAdminHeaders() });
     }
@@ -2658,12 +2493,14 @@ print(r.json())`;
         state.notifications = state.notifications.filter(n => n.id !== id);
         renderChannelFilters();
         renderNotifications();
+        renderBacklogView();
       });
 
       es.addEventListener('notifications_cleared', () => {
         state.notifications = [];
         renderChannelFilters();
         renderNotifications();
+        renderBacklogView();
       });
     }
 

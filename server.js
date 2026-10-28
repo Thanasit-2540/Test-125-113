@@ -494,6 +494,7 @@ app.get('/api/init', (req, res) => {
   res.json({
     vapidPublicKey: db.vapidKeys.publicKey,
     channels: db.channels,
+    technicians: (db.technicians || []).map(t => ({ id: t.id, name: t.name, active: t.active })),
     tokens: isAdmin ? db.tokens : [], // Tokens only revealed to authenticated admins!
     notifications: db.notifications.slice(0, 100),
     subscriberCount: db.subscriptions.length,
@@ -866,32 +867,15 @@ function getBotConfigData() {
 function saveBotConfigData(cfg) {
   db.botConfig = cfg;
   saveDB(db);
-  try {
-    fs.writeFileSync(BOT_CONFIG_FILE, JSON.stringify(cfg, null, 2), 'utf8');
-  } catch (e) {}
 }
 
 app.get('/api/bot/config', requireAdmin, (req, res) => {
   res.json({ status: 200, config: getBotConfigData() });
 });
 
-app.post('/api/bot/config', requireAdmin, async (req, res) => {
-  const current = getBotConfigData();
-  const updated = { ...current, ...req.body };
-  saveBotConfigData(updated);
-
-  // Notify local bot daemon to reload config immediately if running
-  try {
-    const controller = new AbortController();
-    const timeout = setTimeout(() => controller.abort(), 800);
-    await fetch('http://127.0.0.1:3055/api/bot/reload-config', {
-      method: 'POST',
-      signal: controller.signal
-    }).catch(() => {});
-    clearTimeout(timeout);
-  } catch (e) {}
-
-  res.json({ status: 200, message: 'Saved bot config', config: updated });
+// Bot configuration is restricted to PC only (BotControlCenter.exe)
+app.post('/api/bot/config', requireAdmin, (req, res) => {
+  return res.status(403).json({ status: 403, message: 'การตั้งค่าบอทกำหนดให้ทำผ่านโปรแกรมบนเครื่อง PC เท่านั้น' });
 });
 
 app.get('/api/bot/status', async (req, res) => {
@@ -966,13 +950,183 @@ app.post('/api/bot/heartbeat', (req, res) => {
     state: botState,
     reportedAt: new Date().toISOString()
   };
-  saveDB(db);
+  if (botCfg && typeof botCfg === 'object' && Object.keys(botCfg).length > 0) {
+    db.botConfig = { ...getBotConfigData(), ...botCfg };
+    saveBotConfigData(db.botConfig);
+  } else {
+    saveDB(db);
+  }
 
-  // Return server config so bot can sync if changed remotely
   res.json({
     status: 200,
-    remoteConfig: getBotConfigData()
+    remoteConfig: getBotConfigData(),
+    pendingActions: db.botPendingActions || []
   });
+});
+
+// Acknowledge processed bot action from cloud queue
+app.post('/api/bot/action-ack', (req, res) => {
+  const { actionId } = req.body || {};
+  if (actionId && db.botPendingActions) {
+    db.botPendingActions = db.botPendingActions.filter(a => a.id !== actionId);
+    saveDB(db);
+  }
+  return res.json({ status: 200, ok: true });
+});
+
+// Manual Accept & Assign by Admin for unmatched / review tickets
+app.post('/api/admin/accept-and-assign', requireAdmin, async (req, res) => {
+  const { notifId, docno, techId, techName, estimateDays, user } = req.body || {};
+  if (!docno || !techId) {
+    return res.status(400).json({ status: 400, message: 'กรุณาระบุ docno และ techId' });
+  }
+
+  const factoryUser = user || (getBotConfigData() ? getBotConfigData().factoryUser : 'THANASIT') || 'THANASIT';
+  const estDays = Math.max(1, parseInt(estimateDays, 10) || 7);
+
+  let acceptResult = null;
+  let executedLocally = false;
+
+  // 1. Try local bot daemon first (port 3055)
+  try {
+    const botRes = await fetch('http://127.0.0.1:3055/api/bot/accept', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ docno, techId, techName, estimateDays: estDays, user: factoryUser })
+    });
+    if (botRes.ok) {
+      acceptResult = await botRes.json();
+      executedLocally = true;
+    }
+  } catch (e) {
+    // bot daemon not running on port 3055
+  }
+
+  // 2. If bot daemon didn't answer, check if SqlBridge.exe exists locally on this host
+  if (!executedLocally) {
+    const SQL_BRIDGE = path.join(__dirname, 'SqlBridge.exe');
+    if (fs.existsSync(SQL_BRIDGE)) {
+      try {
+        const { execFile } = require('child_process');
+        const output = await new Promise((resolve, reject) => {
+          execFile(SQL_BRIDGE, ['accept', docno, String(estDays), factoryUser, techId], { encoding: 'utf8', windowsHide: true }, (err, stdout) => {
+            if (err && !stdout) return reject(err);
+            resolve(stdout);
+          });
+        });
+        const clean = (output || '').trim().replace(/^\uFEFF/, '');
+        const parsed = JSON.parse(clean);
+        if (parsed.ok) {
+          acceptResult = parsed;
+          executedLocally = true;
+        }
+      } catch (err) {
+        console.error('SqlBridge direct accept error:', err.message);
+      }
+    }
+  }
+
+  // 3. If neither ran locally (e.g. server is on Render cloud), queue action for bot daemon to pick up via heartbeat
+  if (!executedLocally) {
+    if (!db.botPendingActions) db.botPendingActions = [];
+    db.botPendingActions.push({
+      id: 'act_' + Date.now(),
+      type: 'accept_and_assign',
+      docno,
+      techId,
+      techName,
+      estimateDays: estDays,
+      user: factoryUser,
+      notifId,
+      createdAt: new Date().toISOString()
+    });
+    saveDB(db);
+  }
+
+  // 4. Update notification in-place in db.notifications
+  let targetNotif = null;
+  if (notifId) {
+    targetNotif = (db.notifications || []).find(n => n.id === notifId);
+  }
+  if (!targetNotif && docno) {
+    targetNotif = (db.notifications || []).find(n =>
+      (n.metadata && n.metadata.docno === docno) ||
+      (n.title && n.title.includes(docno))
+    );
+  }
+
+  if (targetNotif) {
+    targetNotif.taskStatus = 'in_progress';
+    targetNotif.assignee = techName;
+    targetNotif.title = targetNotif.title.replace('⚠️ [รอแอดมินพิจารณา]', '⚡ [แอดมินมอบหมาย]');
+    targetNotif.priority = 'high';
+    targetNotif.updatedAt = new Date().toISOString();
+    if (!targetNotif.metadata) targetNotif.metadata = {};
+    targetNotif.metadata.assignedTechId = techId;
+    targetNotif.metadata.assignedTechName = techName;
+    targetNotif.metadata.estimateDays = estDays;
+    saveDB(db);
+    broadcastSSE('status_updated', targetNotif);
+
+    // Send Web Push notification to target technician
+    try {
+      const pushPayload = JSON.stringify({
+        id: targetNotif.id,
+        title: `⚡ [มอบหมายงาน] ${docno} - ${targetNotif.channelName || 'งานแจ้งซ่อม'}`,
+        body: `[ช่าง: ${techName}] ${targetNotif.message}`,
+        icon: '/icon-192.png',
+        badge: '/icon-192.png',
+        tag: targetNotif.id,
+        priority: 'high',
+        url: '/',
+        createdAt: targetNotif.updatedAt
+      });
+      const targets = db.subscriptions.filter(sub => matchAssigneeServer(techName, sub));
+      for (const sub of targets) {
+        webpush.sendNotification(sub.subscription, pushPayload, { TTL: 86400, urgency: 'high' }).catch(() => {});
+      }
+    } catch (e) {}
+  }
+
+  return res.json({
+    status: 200,
+    ok: true,
+    executedLocally,
+    message: executedLocally
+      ? `รับเรื่อง ${docno} ในระบบโรงงานและมอบหมายให้ ${techName} เรียบร้อยแล้ว`
+      : `ส่งคำสั่งรับเรื่อง ${docno} ให้ ${techName} ไปยังบอทโรงงานเรียบร้อยแล้ว`,
+    job: acceptResult?.job || null
+  });
+});
+
+// Dismiss unmatched ticket without accepting
+app.post('/api/admin/dismiss-unmatched', requireAdmin, async (req, res) => {
+  const { notifId, docno } = req.body || {};
+  if (!notifId && !docno) {
+    return res.status(400).json({ status: 400, message: 'กรุณาระบุ notifId หรือ docno' });
+  }
+
+  const idx = (db.notifications || []).findIndex(n =>
+    n.id === notifId || (docno && ((n.metadata && n.metadata.docno === docno) || (n.title && n.title.includes(docno))))
+  );
+  let deleted = null;
+  if (idx >= 0) {
+    deleted = db.notifications.splice(idx, 1)[0];
+    saveDB(db);
+    broadcastSSE('notification_deleted', { id: deleted.id });
+  }
+
+  if (docno) {
+    try {
+      await fetch('http://127.0.0.1:3055/api/bot/dismiss', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ docno })
+      });
+    } catch (e) {}
+  }
+
+  return res.json({ status: 200, ok: true, message: `ปฏิเสธ/ไม่รับงาน ${docno || ''} เรียบร้อยแล้ว` });
 });
 
 app.listen(PORT, '0.0.0.0', () => {
