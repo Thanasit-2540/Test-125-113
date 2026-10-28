@@ -712,6 +712,9 @@
         📋 หน้างานค้างซ่อม (<span id="backlogCountBadge">0</span>)
       </button>
       
+      <button class="nav-tab admin-only" id="tabBtnTestDispatch" style="display: none; border-color: rgba(59,130,246,0.4); color: #93c5fd;" onclick="switchTab('test-dispatch', this)">
+        🧪 ยิงทดสอบแจ้งเตือน
+      </button>
       <button class="nav-tab admin-only" id="tabBtnTechs" style="display: none;" onclick="switchTab('techs', this)">
         👷 จัดการรายชื่อช่าง (<span id="techsCountBadge">0</span>)
       </button>
@@ -777,6 +780,97 @@
 
     
     <!-- TAB: TECHNICIANS MANAGEMENT (ADMIN ONLY) -->
+    <!-- TAB: TEST DISPATCH PLAYGROUND (ADMIN ONLY) -->
+    <section id="tab-test-dispatch" class="tab-pane">
+      <div class="card" style="max-width: 820px; margin: 0 auto;">
+        <div class="card-header">
+          <div class="card-title">🧪 ยิงทดสอบแจ้งเตือน & แจกงานเฉพาะบุคคล</div>
+          <span class="pill" style="background: rgba(59,130,246,0.18); color: #93c5fd; border: 1px solid rgba(59,130,246,0.4);">👑 เฉพาะแอดมิน</span>
+        </div>
+        <p style="color: var(--text-muted); font-size: 0.88rem; margin-bottom: 20px; line-height: 1.6;">
+          สามารถเลือกกลุ่มงาน และระบุช่างเฉพาะบุคคล (เช่น มี, พิวพิว หรือ ศิวกร, กิตติพงษ์) เพื่อทดสอบการเด้งแจ้งเตือนแบบ Real-time และทดสอบว่างานเข้าไปโชว์ใน <strong>"⭐ งานของฉัน"</strong> ของช่างคนนั้นถูกต้องหรือไม่
+        </p>
+
+        <form onsubmit="handleAdminTestDispatch(event)">
+          <!-- 1. เลือกกลุ่มงาน (Channel) -->
+          <div class="form-group">
+            <label class="form-label">1. เลือกกลุ่มงาน / ห้องแจ้งเตือน</label>
+            <select id="dispatchChannelSelect" class="form-control" onchange="onDispatchChannelChange()">
+              <!-- populated dynamically -->
+            </select>
+          </div>
+
+          <!-- 2. เลือกระดับความสำคัญ (Priority) -->
+          <div class="form-group">
+            <label class="form-label">2. ระดับความสำคัญ (Priority)</label>
+            <div style="display: flex; gap: 10px; flex-wrap: wrap;">
+              <label style="display: flex; align-items: center; gap: 6px; cursor: pointer; background: rgba(255,255,255,0.04); padding: 8px 14px; border-radius: 8px; border: 1px solid var(--border);">
+                <input type="radio" name="dispatchPriority" value="urgent" />
+                <span style="color: #f87171; font-weight: 600;">🔴 ด่วนที่สุด (Urgent)</span>
+              </label>
+              <label style="display: flex; align-items: center; gap: 6px; cursor: pointer; background: rgba(255,255,255,0.04); padding: 8px 14px; border-radius: 8px; border: 1px solid var(--border);">
+                <input type="radio" name="dispatchPriority" value="high" checked />
+                <span style="color: #fcd34d; font-weight: 600;">🟡 สำคัญ (High)</span>
+              </label>
+              <label style="display: flex; align-items: center; gap: 6px; cursor: pointer; background: rgba(255,255,255,0.04); padding: 8px 14px; border-radius: 8px; border: 1px solid var(--border);">
+                <input type="radio" name="dispatchPriority" value="normal" />
+                <span style="color: #4ade80; font-weight: 600;">🟢 ทั่วไป (Normal)</span>
+              </label>
+            </div>
+          </div>
+
+          <!-- 3. เลือกช่างที่ต้องการมอบหมายงาน (Target Technicians) -->
+          <div class="form-group">
+            <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 8px; flex-wrap: wrap; gap: 8px;">
+              <label class="form-label" style="margin-bottom: 0;">3. มอบหมายงานให้ช่างคนไหนบ้าง? (เลือก 1 คน หรือหลายคน)</label>
+              <div style="display: flex; gap: 6px; flex-wrap: wrap;">
+                <button type="button" class="btn btn-outline btn-sm" onclick="quickSelectDispatchTechs(['มี', 'พิวพิว'])">⚡ มี + พิวพิว</button>
+                <button type="button" class="btn btn-outline btn-sm" onclick="quickSelectDispatchTechs(['ศิวกร', 'อาทิตย์'])">❄️ ศิวกร + อาทิตย์</button>
+                <button type="button" class="btn btn-outline btn-sm" onclick="quickSelectDispatchTechs(['กิตติพงษ์'])">📞 กิตติพงษ์</button>
+                <button type="button" class="btn btn-outline btn-sm" onclick="clearDispatchTechs()">✕ ล้าง</button>
+              </div>
+            </div>
+            
+            <!-- Technicians Checkboxes Grid -->
+            <div id="dispatchTechListGrid" style="display: grid; grid-template-columns: repeat(auto-fill, minmax(210px, 1fr)); gap: 8px; background: var(--bg-input); padding: 14px; border-radius: 12px; border: 1px solid var(--border); max-height: 220px; overflow-y: auto;">
+              <!-- dynamically rendered -->
+            </div>
+            <div id="selectedTechsSummary" style="margin-top: 8px; font-size: 0.86rem; color: #93c5fd;">
+              👤 ช่างที่เลือก: <strong>ยังไม่ได้เลือก (ส่งเป็นงานทั่วไป / ให้ทุกคนเห็น)</strong>
+            </div>
+          </div>
+
+          <!-- 4. หัวข้อแจ้งเตือน -->
+          <div class="form-group">
+            <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 6px;">
+              <label class="form-label" style="margin-bottom: 0;">4. หัวข้องาน / เลขที่แจ้งซ่อม</label>
+            </div>
+            <input type="text" id="dispatchTitleInput" class="form-control" placeholder="เช่น ⚡ [ไฟฟ้า] IF2610999 แผนกบุคคล (หลอดไฟขาด)" value="⚡ [ไฟฟ้า] IF2610991 แผนกบุคคล (ห้องประชุมใหญ่)" required />
+          </div>
+
+          <!-- 5. รายละเอียดงาน -->
+          <div class="form-group">
+            <label class="form-label">5. รายละเอียดอาการแจ้งซ่อม / สถานที่</label>
+            <textarea id="dispatchMessageInput" class="form-control" rows="3" placeholder="ระบุรายละเอียดของงาน เช่น อาการเสีย ห้อง หรือจุดที่พบปัญหา..." required>หลอดไฟ LED กะพริบและมีเสียงดัง รบกวนเข้าตรวจสอบและเปลี่ยนหลอดใหม่</textarea>
+          </div>
+
+          <!-- Quick Presets -->
+          <div style="margin-bottom: 20px;">
+            <div style="font-size: 0.82rem; color: var(--text-muted); margin-bottom: 8px;">💡 ข้อความตัวอย่างกดเปลี่ยนได้ทันที:</div>
+            <div style="display: flex; gap: 8px; flex-wrap: wrap;">
+              <button type="button" class="btn btn-outline btn-sm" onclick="fillDispatchPreset('elec_light')">⚡ ไฟฟ้า: หลอดไฟดับ (มี/พิวพิว)</button>
+              <button type="button" class="btn btn-outline btn-sm" onclick="fillDispatchPreset('air_leak')">❄️ แอร์: น้ำหยด (อาทิตย์/ศิวกร)</button>
+              <button type="button" class="btn btn-outline btn-sm" onclick="fillDispatchPreset('phone_down')">📞 โทรศัพท์: โทรออกไม่ได้ (กิตติพงษ์)</button>
+            </div>
+          </div>
+
+          <button type="submit" id="dispatchSubmitBtn" class="btn btn-primary" style="width: 100%; padding: 13px; font-size: 1.05rem; font-weight: 600;">
+            🚀 ยิงแจ้งเตือนทันที (Broadcast Real-time)
+          </button>
+        </form>
+      </div>
+    </section>
+
     <section id="tab-techs" class="tab-pane">
       <div class="card">
         <div class="card-header">
@@ -1287,6 +1381,7 @@
       if (state.isAdmin) {
         loadTechniciansList();
         loadAdminTokens();
+        initTestDispatchTab();
       }
       renderNotifications();
     }
@@ -1344,7 +1439,7 @@
     }
 
     function switchTab(tabId, btn) {
-      if ((tabId === 'tokens' || tabId === 'docs' || tabId === 'techs') && !state.isAdmin) {
+      if ((tabId === 'tokens' || tabId === 'docs' || tabId === 'techs' || tabId === 'test-dispatch') && !state.isAdmin) {
         handleAdminBtnClick();
         return;
       }
@@ -1354,6 +1449,7 @@
       if (target) target.classList.add('active');
       if (btn) btn.classList.add('active');
       if (tabId === 'techs') loadTechniciansList();
+      if (tabId === 'test-dispatch') initTestDispatchTab();
     }
 
     // Load initial data
@@ -1376,6 +1472,175 @@
       connectSSE();
       checkExistingPushSubscription();
       setInterval(verifyUserStatus, 60000);
+    }
+
+    
+    // ==========================================
+    // ADMIN TEST DISPATCH PLAYGROUND
+    // ==========================================
+    function initTestDispatchTab() {
+      populateDispatchChannels();
+      renderDispatchTechGrid();
+    }
+
+    function populateDispatchChannels() {
+      const select = document.getElementById('dispatchChannelSelect');
+      if (!select) return;
+
+      const channels = state.channels || [];
+      select.innerHTML = channels.map(c => `
+        <option value="${c.id}">${escapeHtml(c.name)}</option>
+      `).join('');
+
+      // Auto-select electric channel if available
+      const elecCh = channels.find(c => c.name.includes('ไฟฟ้า'));
+      if (elecCh) select.value = elecCh.id;
+    }
+
+    function onDispatchChannelChange() {
+      // Optional callback when channel changes
+    }
+
+    function renderDispatchTechGrid() {
+      const container = document.getElementById('dispatchTechListGrid');
+      if (!container) return;
+
+      const techs = (state.technicians && state.technicians.length > 0) ? state.technicians : [
+        { id: '56877', name: 'นาย มี' },
+        { id: '57145', name: 'นาย พิวพิว' },
+        { id: '52B13', name: 'นาย กิตติพงษ์ ศรีโยธา' },
+        { id: '51061', name: 'นาย อาทิตย์ บ้วนนอก' },
+        { id: '61B47', name: 'นาย ศิวกร วงค์ครองศักดิ์' }
+      ];
+
+      container.innerHTML = techs.map(t => `
+        <label style="display: flex; align-items: center; gap: 8px; cursor: pointer; padding: 7px 10px; border-radius: 8px; background: rgba(255,255,255,0.03); border: 1px solid rgba(255,255,255,0.07);">
+          <input type="checkbox" class="dispatch-tech-cb" value="${escapeHtml(t.name)}" onchange="updateSelectedTechsSummary()" />
+          <div>
+            <div style="font-size: 0.88rem; font-weight: 600; color: #f8fafc;">${escapeHtml(t.name)}</div>
+            <div style="font-size: 0.74rem; color: #94a3b8; font-family: monospace;">รหัส: ${escapeHtml(t.id)}</div>
+          </div>
+        </label>
+      `).join('');
+
+      updateSelectedTechsSummary();
+    }
+
+    function quickSelectDispatchTechs(names) {
+      document.querySelectorAll('.dispatch-tech-cb').forEach(cb => {
+        const val = cb.value;
+        const match = names.some(n => val.includes(n));
+        cb.checked = match;
+      });
+      updateSelectedTechsSummary();
+    }
+
+    function clearDispatchTechs() {
+      document.querySelectorAll('.dispatch-tech-cb').forEach(cb => cb.checked = false);
+      updateSelectedTechsSummary();
+    }
+
+    function updateSelectedTechsSummary() {
+      const selected = Array.from(document.querySelectorAll('.dispatch-tech-cb:checked')).map(cb => cb.value);
+      const sumEl = document.getElementById('selectedTechsSummary');
+      if (!sumEl) return;
+      if (selected.length === 0) {
+        sumEl.innerHTML = '👤 ช่างที่เลือก: <strong>ยังไม่ได้เลือก (ส่งเป็นงานทั่วไป / ให้ทุกคนเห็น)</strong>';
+      } else {
+        sumEl.innerHTML = `👤 ช่างที่เลือก (${selected.length} ท่าน): <strong style="color: #4ade80;">${escapeHtml(selected.join(', '))}</strong>`;
+      }
+    }
+
+    function fillDispatchPreset(type) {
+      const titleInput = document.getElementById('dispatchTitleInput');
+      const msgInput = document.getElementById('dispatchMessageInput');
+      const chSelect = document.getElementById('dispatchChannelSelect');
+
+      if (type === 'elec_light') {
+        titleInput.value = '⚡ [ไฟฟ้า] IF2610991 แผนกบุคคล (ห้องประชุมใหญ่)';
+        msgInput.value = 'หลอดไฟ LED กะพริบและมีเสียงดัง รบกวนเข้าตรวจสอบและเปลี่ยนหลอดใหม่';
+        quickSelectDispatchTechs(['มี', 'พิวพิว']);
+        const elecCh = (state.channels || []).find(c => c.name.includes('ไฟฟ้า'));
+        if (elecCh && chSelect) chSelect.value = elecCh.id;
+      } else if (type === 'air_leak') {
+        titleInput.value = '❄️ [แอร์] IF2610992 แผนกจัดซื้อ (แอร์ติดผนัง)';
+        msgInput.value = 'แอร์มีน้ำหยดลงบนโต๊ะทำงาน และความเย็นลดลง รบกวนล้างท่อน้ำทิ้งด่วน';
+        quickSelectDispatchTechs(['ศิวกร', 'อาทิตย์']);
+        const airCh = (state.channels || []).find(c => c.name.includes('แอร์'));
+        if (airCh && chSelect) chSelect.value = airCh.id;
+      } else if (type === 'phone_down') {
+        titleInput.value = '📞 [โทรศัพท์] IF2610993 แผนกคลังสินค้า';
+        msgInput.value = 'โทรศัพท์สายในเบอร์ 102 โทรออกไม่ได้ มีเสียงสัญญาณซ่ารบกวนตลอดเวลา';
+        quickSelectDispatchTechs(['กิตติพงษ์']);
+        const elecCh = (state.channels || []).find(c => c.name.includes('ไฟฟ้า'));
+        if (elecCh && chSelect) chSelect.value = elecCh.id;
+      }
+    }
+
+    async function handleAdminTestDispatch(e) {
+      e.preventDefault();
+      const btn = document.getElementById('dispatchSubmitBtn');
+      const title = document.getElementById('dispatchTitleInput').value.trim();
+      const message = document.getElementById('dispatchMessageInput').value.trim();
+      const channelId = document.getElementById('dispatchChannelSelect').value;
+      const priority = document.querySelector('input[name="dispatchPriority"]:checked')?.value || 'high';
+
+      // Get selected technicians
+      const selectedTechBoxes = document.querySelectorAll('.dispatch-tech-cb:checked');
+      const techNames = Array.from(selectedTechBoxes).map(cb => cb.value);
+      const assigneeStr = techNames.length > 0 ? techNames.join(', ') : '';
+
+      // Get channel info
+      const ch = (state.channels || []).find(c => c.id === channelId);
+      const channelName = ch ? ch.name : 'ทั่วไป';
+      const channelColor = ch ? ch.color : '#06C755';
+
+      if (btn) {
+        btn.disabled = true;
+        btn.textContent = '⏳ กำลังยิงแจ้งเตือน...';
+      }
+
+      // Find token or demo token
+      const token = (state.tokens || []).find(t => t.channelId === channelId)?.token || (state.tokens && state.tokens[0]?.token) || 'NOTIFY-TASK-2026-DEMO';
+
+      try {
+        const res = await fetch('/api/notify', {
+          method: 'POST',
+          headers: {
+            'Authorization': `Bearer ${token}`,
+            'Content-Type': 'application/json'
+          },
+          body: JSON.stringify({
+            title,
+            message,
+            assignee: assigneeStr || null,
+            priority,
+            channelId,
+            channelName,
+            channelColor,
+            isTask: Boolean(assigneeStr)
+          })
+        });
+
+        const data = await res.json();
+        if (res.ok) {
+          showToast('🚀 ยิงแจ้งเตือนสำเร็จ!', assigneeStr ? `มอบหมายให้: ${assigneeStr}` : 'ส่งแบบงานทั่วไป');
+          playNotificationSound(priority);
+          // Auto switch to Feed tab after short pause
+          setTimeout(() => {
+            switchTab('feed', document.getElementById('tabBtnFeed'));
+          }, 600);
+        } else {
+          alert(data.message || 'เกิดข้อผิดพลาดในการส่งแจ้งเตือน');
+        }
+      } catch (err) {
+        alert('ไม่สามารถเชื่อมต่อเซิร์ฟเวอร์ได้');
+      } finally {
+        if (btn) {
+          btn.disabled = false;
+          btn.textContent = '🚀 ยิงแจ้งเตือนทันที (Broadcast Real-time)';
+        }
+      }
     }
 
     function renderAll() {
