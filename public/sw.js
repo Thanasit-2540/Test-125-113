@@ -12,13 +12,13 @@ self.addEventListener('push', (event) => {
     try {
       data = event.data.json();
     } catch (e) {
-      data = { title: 'NotifyHub แจ้งเตือน', body: event.data.text() };
+      data = { title: 'ADDA Service แจ้งเตือน', body: event.data.text() };
     }
   } else {
-    data = { title: 'NotifyHub แจ้งเตือน', body: 'มีงานใหม่เข้ามาในระบบ' };
+    data = { title: 'ADDA Service แจ้งเตือน', body: 'มีงานใหม่เข้ามาในระบบ' };
   }
 
-  const title = data.title || 'NotifyHub แจ้งเตือน';
+  const title = data.title || 'ADDA Service แจ้งเตือน';
 
   // Standard options compatible with both iOS Safari APNs & Android Chrome
   const options = {

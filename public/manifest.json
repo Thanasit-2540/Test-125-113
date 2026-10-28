@@ -1,7 +1,7 @@
 {
-  "name": "NotifyHub - ระบบแจ้งเตือนและแจกงาน",
-  "short_name": "NotifyHub",
-  "description": "ระบบแจ้งเตือนและแจกงานส่วนตัว ทดแทน LINE Notify",
+  "name": "ADDA Service - ระบบแจ้งเตือนและแจกงาน",
+  "short_name": "ADDA Service",
+  "description": "ADDA Service - ระบบแจ้งเตือนและแจกงานส่วนตัว",
   "start_url": "/",
   "display": "standalone",
   "background_color": "#0F172A",
@@ -21,10 +21,9 @@
       "purpose": "any maskable"
     },
     {
-      "src": "/icon-192.svg",
-      "sizes": "192x192 512x512",
-      "type": "image/svg+xml",
-      "purpose": "any maskable"
+      "src": "/apple-touch-icon.png",
+      "sizes": "180x180",
+      "type": "image/png"
     }
   ]
 }

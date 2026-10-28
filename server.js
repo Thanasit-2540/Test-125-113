@@ -840,10 +840,145 @@ app.delete('/api/subscribers/:id', requireAdmin, (req, res) => {
   res.json({ status: 200, message: 'Deleted subscriber device' });
 });
 
+// ==========================================
+// 6. BOT MANAGEMENT & AUTO-ACCEPT CONTROL ENDPOINTS
+// ==========================================
+const BOT_CONFIG_FILE = path.join(DATA_DIR, 'bot_config.json');
+const BOT_STATE_FILE = path.join(DATA_DIR, 'bot_state.json');
+
+function getBotConfigData() {
+  if (fs.existsSync(BOT_CONFIG_FILE)) {
+    try {
+      const raw = fs.readFileSync(BOT_CONFIG_FILE, 'utf8').replace(/^\uFEFF/, '').trim();
+      return JSON.parse(raw);
+    } catch (e) {}
+  }
+  return db.botConfig || {
+    autoAccept: false,
+    pollIntervalSec: 60,
+    estimateDays: 7,
+    factoryUser: 'THANASIT',
+    elecEnabled: true,
+    airEnabled: false
+  };
+}
+
+function saveBotConfigData(cfg) {
+  db.botConfig = cfg;
+  saveDB(db);
+  try {
+    fs.writeFileSync(BOT_CONFIG_FILE, JSON.stringify(cfg, null, 2), 'utf8');
+  } catch (e) {}
+}
+
+app.get('/api/bot/config', requireAdmin, (req, res) => {
+  res.json({ status: 200, config: getBotConfigData() });
+});
+
+app.post('/api/bot/config', requireAdmin, async (req, res) => {
+  const current = getBotConfigData();
+  const updated = { ...current, ...req.body };
+  saveBotConfigData(updated);
+
+  // Notify local bot daemon to reload config immediately if running
+  try {
+    const controller = new AbortController();
+    const timeout = setTimeout(() => controller.abort(), 800);
+    await fetch('http://127.0.0.1:3055/api/bot/reload-config', {
+      method: 'POST',
+      signal: controller.signal
+    }).catch(() => {});
+    clearTimeout(timeout);
+  } catch (e) {}
+
+  res.json({ status: 200, message: 'Saved bot config', config: updated });
+});
+
+app.get('/api/bot/status', async (req, res) => {
+  // 1. Try querying local daemon
+  try {
+    const controller = new AbortController();
+    const timeout = setTimeout(() => controller.abort(), 1200);
+    const daemonRes = await fetch('http://127.0.0.1:3055/api/bot/status', {
+      signal: controller.signal
+    });
+    clearTimeout(timeout);
+    if (daemonRes.ok) {
+      const daemonData = await daemonRes.json();
+      return res.json({ status: 200, online: true, ...daemonData });
+    }
+  } catch (e) {}
+
+  // 2. Fallback to cached state from file or db heartbeat
+  let cachedState = null;
+  if (fs.existsSync(BOT_STATE_FILE)) {
+    try {
+      const raw = fs.readFileSync(BOT_STATE_FILE, 'utf8').replace(/^\uFEFF/, '').trim();
+      cachedState = JSON.parse(raw);
+    } catch (e) {}
+  }
+  if (!cachedState && db.botHeartbeat) {
+    cachedState = db.botHeartbeat.state;
+  }
+
+  res.json({
+    status: 200,
+    online: false,
+    state: cachedState || { running: false, currentTask: 'บอทไม่ได้เปิดทำงานในขณะนี้' },
+    config: getBotConfigData()
+  });
+});
+
+app.post('/api/bot/check-now', requireAdmin, async (req, res) => {
+  try {
+    const r = await fetch('http://127.0.0.1:3055/api/bot/check-now', { method: 'POST' });
+    const data = await r.json();
+    return res.json(data);
+  } catch (e) {
+    return res.status(503).json({ status: 503, message: 'ไม่สามารถติดต่อ Bot Daemon ในเครื่องได้ (โปรดตรวจสอบว่าเปิด Bot แล้วหรือไม่)' });
+  }
+});
+
+app.post('/api/bot/sync-backlog', requireAdmin, async (req, res) => {
+  try {
+    const r = await fetch('http://127.0.0.1:3055/api/bot/sync-backlog', { method: 'POST' });
+    const data = await r.json();
+    return res.json(data);
+  } catch (e) {
+    return res.status(503).json({ status: 503, message: 'ไม่สามารถติดต่อ Bot Daemon ในเครื่องได้ (โปรดตรวจสอบว่าเปิด Bot แล้วหรือไม่)' });
+  }
+});
+
+app.post('/api/bot/unlock-user', requireAdmin, async (req, res) => {
+  try {
+    const r = await fetch('http://127.0.0.1:3055/api/bot/unlock-user', { method: 'POST' });
+    const data = await r.json();
+    return res.json(data);
+  } catch (e) {
+    return res.status(503).json({ status: 503, message: 'ไม่สามารถติดต่อ Bot Daemon ในเครื่องได้ (โปรดตรวจสอบว่าเปิด Bot แล้วหรือไม่)' });
+  }
+});
+
+// Heartbeat receiver for cloud-to-local sync
+app.post('/api/bot/heartbeat', (req, res) => {
+  const { state: botState, config: botCfg } = req.body || {};
+  db.botHeartbeat = {
+    state: botState,
+    reportedAt: new Date().toISOString()
+  };
+  saveDB(db);
+
+  // Return server config so bot can sync if changed remotely
+  res.json({
+    status: 200,
+    remoteConfig: getBotConfigData()
+  });
+});
+
 app.listen(PORT, '0.0.0.0', () => {
   const ips = getLocalIPs();
   console.log('====================================================');
-  console.log(`🚀 ระบบแจ้งเตือน & แจกงาน (Notify Hub) เริ่มทำงานแล้ว!`);
+  console.log(`🚀 ADDA Service - ระบบแจ้งเตือน & แจกงาน เริ่มทำงานแล้ว!`);
   console.log(`👉 เปิดบนคอมพิวเตอร์: http://localhost:${PORT}`);
   ips.forEach(ip => {
     console.log(`📱 เปิดผ่านมือถือ (Wi-Fi เดียวกัน): http://${ip}:${PORT}`);
