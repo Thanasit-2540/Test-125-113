@@ -132,21 +132,66 @@ function getSkillsDb() {
   }
 }
 
-function getJobsDb() {
-  const existing = readJsonSafe(JOP_FILE, null);
-  if (existing) return existing;
-  try {
-    return buildJopDb();
-  } catch (e) {
-    return { title: 'Jop', byTechnician: {}, allJobs: [], unmatchedPendingAdmin: { count: 0, jobs: [] } };
-  }
-}
-
 function extractDocno(notif) {
   if (!notif) return null;
   if (notif.metadata && notif.metadata.docno) return String(notif.metadata.docno).toUpperCase();
   const match = (notif.title || '').match(/\b(IF\d+)\b/i);
   return match ? match[1].toUpperCase() : null;
+}
+
+function enrichJobsWithImages(jobsDb) {
+  if (!jobsDb || !db || !Array.isArray(db.notifications)) return jobsDb;
+  const docImgMap = new Map();
+  for (const n of db.notifications) {
+    if (!n.image) continue;
+    const doc = extractDocno(n);
+    if (doc) docImgMap.set(doc.toUpperCase(), n.image);
+  }
+  if (docImgMap.size === 0) return jobsDb;
+
+  const enrichJob = (j) => {
+    if (!j) return j;
+    const doc = (j.docno || '').toUpperCase();
+    if (!j.image && docImgMap.has(doc)) {
+      return { ...j, image: docImgMap.get(doc) };
+    }
+    return j;
+  };
+
+  const enriched = { ...jobsDb };
+  if (Array.isArray(enriched.allJobs)) {
+    enriched.allJobs = enriched.allJobs.map(enrichJob);
+  }
+  if (enriched.byTechnician && typeof enriched.byTechnician === 'object') {
+    const newByTech = {};
+    for (const [k, v] of Object.entries(enriched.byTechnician)) {
+      newByTech[k] = {
+        ...v,
+        jobs: Array.isArray(v.jobs) ? v.jobs.map(enrichJob) : []
+      };
+    }
+    enriched.byTechnician = newByTech;
+  }
+  if (enriched.unmatchedPendingAdmin && Array.isArray(enriched.unmatchedPendingAdmin.jobs)) {
+    enriched.unmatchedPendingAdmin = {
+      ...enriched.unmatchedPendingAdmin,
+      jobs: enriched.unmatchedPendingAdmin.jobs.map(enrichJob)
+    };
+  }
+  return enriched;
+}
+
+function getJobsDb() {
+  const existing = readJsonSafe(JOP_FILE, null);
+  let base = existing;
+  if (!base) {
+    try {
+      base = buildJopDb();
+    } catch (e) {
+      base = { title: 'Jop', byTechnician: {}, allJobs: [], unmatchedPendingAdmin: { count: 0, jobs: [] } };
+    }
+  }
+  return enrichJobsWithImages(base);
 }
 
 function removeUploadFileIfUnused(imageUrl) {
@@ -800,6 +845,13 @@ async function handleNotify(req, res) {
         const prev = oldMatches[0];
         if (prev.taskStatus !== notification.taskStatus || prev.assignee !== notification.assignee) {
           isStatusOrAssigneeChange = true;
+        }
+        // Preserve previous image if this update did not provide a new one
+        if (!notification.image) {
+          const oldWithImg = oldMatches.find(m => m.image);
+          if (oldWithImg) {
+            notification.image = oldWithImg.image;
+          }
         }
         db.notifications = db.notifications.filter(n => !oldMatches.includes(n));
         oldMatches.forEach(old => {

@@ -398,11 +398,19 @@
 
     .notif-image {
       max-width: 100%;
-      max-height: 280px;
+      max-height: 320px;
       border-radius: 10px;
-      margin-top: 8px;
-      margin-bottom: 10px;
+      margin-top: 4px;
+      margin-bottom: 4px;
       border: 1px solid var(--border);
+      cursor: pointer;
+      display: block;
+      transition: transform 0.15s ease, box-shadow 0.15s ease;
+    }
+
+    .notif-image:hover {
+      transform: scale(1.015);
+      box-shadow: 0 4px 16px rgba(0, 0, 0, 0.4);
     }
 
     .notif-footer {
@@ -1880,13 +1888,37 @@
 
     function normBacklogItem(n) {
       if (!n) return n;
-      if (n.title && n.message) return n;
+      if (n.title && n.message) {
+        if (!n.image && n.docno && Array.isArray(state.notifications)) {
+          const docUpper = String(n.docno).toUpperCase();
+          const match = state.notifications.find(notif => {
+            if (!notif.image) return false;
+            const d = (notif.metadata && notif.metadata.docno) || (notif.title || '').match(/\b(IF\d+)\b/i)?.[1];
+            return d && d.toUpperCase() === docUpper;
+          });
+          if (match) n.image = match.image;
+        }
+        return n;
+      }
       const isAir = n.jobType === '3' || (n.category || '').includes('แอร์');
       const typeBadge = isAir ? '❄️ [แอร์]' : '⚡ [ไฟฟ้า]';
       const isOverdue = Boolean(n.isOverdue || n.priority === 'urgent');
       const statusBadge = n.statusBadge || (isOverdue ? `🔴 [เกินกำหนด ${n.estDate || ''}]` : `🟡 [กำหนดเสร็จ ${n.estDate || ''}]`);
       const locStr = n.location ? ` (${n.location})` : '';
       const timeShort = (n.time1 || '').slice(0, 5);
+
+      // Resolve image: prefer n.image, fallback to matching docno in state.notifications
+      let resolvedImage = n.image || null;
+      if (!resolvedImage && n.docno && Array.isArray(state.notifications)) {
+        const docUpper = String(n.docno).toUpperCase();
+        const found = state.notifications.find(notif => {
+          if (!notif.image) return false;
+          const d = (notif.metadata && notif.metadata.docno) || (notif.title || '').match(/\b(IF\d+)\b/i)?.[1];
+          return d && d.toUpperCase() === docUpper;
+        });
+        if (found) resolvedImage = found.image;
+      }
+
       return {
         id: n.id || n.docno,
         docno: n.docno,
@@ -1901,7 +1933,7 @@
         priority: n.priority || (isOverdue ? 'urgent' : 'high'),
         taskStatus: n.taskStatus || n.status || 'in_progress',
         channelName: isAir ? '❄️ งานค้างซ่อม: แอร์' : '⚡ งานค้างซ่อม: ไฟฟ้า',
-        image: n.image || null,
+        image: resolvedImage,
         metadata: {
           docno: n.docno,
           jobType: n.jobType,
@@ -2125,7 +2157,14 @@
             </div>
             <div class="notif-title">${escapeHtml(n.title)}</div>
             <div class="notif-message">${escapeHtml(n.message)}</div>
-            ${n.image ? `<img src="${escapeHtml(n.image)}" class="notif-image" alt="attachment" />` : ''}
+            ${n.image ? `
+              <div style="margin-top: 10px; margin-bottom: 10px;">
+                <img src="${escapeHtml(n.image)}" class="notif-image" alt="ภาพประกอบงาน ${escapeHtml(n.docno || '')}" onclick="window.open('${escapeHtml(n.image)}', '_blank')" title="แตะหรือคลิกเพื่อดูรูปขนาดเต็ม" />
+                <div style="font-size: 0.74rem; color: #94a3b8; margin-top: 4px; display: flex; align-items: center; gap: 4px;">
+                  <span>🔍 แตะหรือคลิกที่รูปเพื่อดูภาพขนาดใหญ่</span>
+                </div>
+              </div>
+            ` : ''}
             ${adminActionSection}
           </div>
         `;
