@@ -2312,6 +2312,16 @@ print(r.json())`;
           notif.title = notif.title.replace('⚠️ [รอแอดมินพิจารณา]', '⚡ [แอดมินมอบหมาย]');
           notif.priority = 'high';
         }
+
+        // Remove from local unmatchedPendingAdmin immediately so it vanishes from admin queue
+        if (state.jobsData && state.jobsData.unmatchedPendingAdmin && Array.isArray(state.jobsData.unmatchedPendingAdmin.jobs)) {
+          state.jobsData.unmatchedPendingAdmin.jobs = state.jobsData.unmatchedPendingAdmin.jobs.filter(j => j.docno !== docno);
+          state.jobsData.unmatchedPendingAdmin.count = state.jobsData.unmatchedPendingAdmin.jobs.length;
+          if (state.jobsData.summary) {
+            state.jobsData.summary.pendingAdminCount = state.jobsData.unmatchedPendingAdmin.count;
+          }
+        }
+
         renderBacklogView();
       } catch (err) {
         alert('เกิดข้อผิดพลาด: ' + err.message);

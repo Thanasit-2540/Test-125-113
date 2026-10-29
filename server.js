@@ -1151,6 +1151,40 @@ app.post('/api/admin/accept-and-assign', requireAdmin, async (req, res) => {
     saveDB(db);
     broadcastSSE('status_updated', targetNotif);
 
+    // Update Jop database so unmatched count updates immediately
+    try {
+      const jop = readJsonSafe(JOP_FILE, null);
+      if (jop) {
+        if (jop.unmatchedPendingAdmin && Array.isArray(jop.unmatchedPendingAdmin.jobs)) {
+          const found = jop.unmatchedPendingAdmin.jobs.find(j => j.docno === docno);
+          jop.unmatchedPendingAdmin.jobs = jop.unmatchedPendingAdmin.jobs.filter(j => j.docno !== docno);
+          jop.unmatchedPendingAdmin.count = jop.unmatchedPendingAdmin.jobs.length;
+          if (jop.summary) {
+            jop.summary.pendingAdminCount = jop.unmatchedPendingAdmin.count;
+          }
+
+          if (found) {
+            found.techs = techName;
+            found.status = 'in_progress';
+            found.statusBadge = '🟡 [กำลังดำเนินการ]';
+            if (!jop.allJobs) jop.allJobs = [];
+            jop.allJobs.unshift(found);
+            if (jop.summary) jop.summary.totalAccepted = jop.allJobs.length;
+
+            if (techId && jop.byTechnician && jop.byTechnician[techId]) {
+              if (!jop.byTechnician[techId].jobs) jop.byTechnician[techId].jobs = [];
+              jop.byTechnician[techId].jobs.unshift(found);
+              jop.byTechnician[techId].count = jop.byTechnician[techId].jobs.length;
+            }
+          }
+        }
+        writeJsonSafe(JOP_FILE, jop);
+        broadcastSSE('jobs_update', { ok: true, data: jop });
+      }
+    } catch (jopErr) {
+      console.warn('Error updating Jop.json in accept-and-assign:', jopErr.message);
+    }
+
     await dispatchWebPush(
       {
         id: targetNotif.id,
