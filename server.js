@@ -790,9 +790,17 @@ async function handleNotify(req, res) {
 
     // Deduplicate by factory ticket number (IF...)
     const cleanDoc = extractDocno(notification);
+    let isBrandNew = true;
+    let isStatusOrAssigneeChange = false;
+
     if (cleanDoc) {
       const oldMatches = db.notifications.filter(n => extractDocno(n) === cleanDoc);
       if (oldMatches.length > 0) {
+        isBrandNew = false;
+        const prev = oldMatches[0];
+        if (prev.taskStatus !== notification.taskStatus || prev.assignee !== notification.assignee) {
+          isStatusOrAssigneeChange = true;
+        }
         db.notifications = db.notifications.filter(n => !oldMatches.includes(n));
         oldMatches.forEach(old => {
           if (old.image && old.image !== notification.image) {
@@ -814,27 +822,32 @@ async function handleNotify(req, res) {
     tokenObj.usageCount = (tokenObj.usageCount || 0) + 1;
     saveDB(db);
 
-    broadcastSSE('notification', notification);
+    const isSilent = req.body.silent === true || req.body.silent === 'true' || req.body.isSync === true || req.body.isSync === 'true';
+    const shouldAlert = (isBrandNew || isStatusOrAssigneeChange) && !isSilent;
 
-    await dispatchWebPush(
-      {
-        id: notification.id,
-        title: notification.title,
-        body: notification.assignee
-          ? `[ผู้รับผิดชอบ: ${notification.assignee}] ${notification.message}`
-          : notification.message,
-        icon: '/icon-192.png',
-        badge: '/icon-192.png',
-        image: notification.image,
-        tag: notification.id,
-        priority: notification.priority,
-        url: notification.url || '/',
-        channelName: notification.channelName,
-        createdAt: notification.createdAt
-      },
-      notification.assignee,
-      notification.priority
-    );
+    broadcastSSE('notification', { ...notification, silent: !shouldAlert });
+
+    if (shouldAlert) {
+      await dispatchWebPush(
+        {
+          id: notification.id,
+          title: notification.title,
+          body: notification.assignee
+            ? `[ผู้รับผิดชอบ: ${notification.assignee}] ${notification.message}`
+            : notification.message,
+          icon: '/icon-192.png',
+          badge: '/icon-192.png',
+          image: notification.image,
+          tag: notification.id,
+          priority: notification.priority,
+          url: notification.url || '/',
+          channelName: notification.channelName,
+          createdAt: notification.createdAt
+        },
+        notification.assignee,
+        notification.priority
+      );
+    }
 
     return res.status(200).json({
       status: 200,

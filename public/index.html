@@ -2425,8 +2425,27 @@ print(r.json())`;
 
       es.addEventListener('notification', (e) => {
         const notif = JSON.parse(e.data);
-        state.notifications.unshift(notif);
+        const docnoMatch = (notif.title || '').match(/IF\d+/i);
+        const docKey = (notif.metadata && notif.metadata.docno) || (docnoMatch ? docnoMatch[0].toUpperCase() : null);
+
+        const existingIdx = state.notifications.findIndex(n => {
+          if (n.id === notif.id) return true;
+          if (docKey) {
+            const m = (n.title || '').match(/IF\d+/i);
+            const k = (n.metadata && n.metadata.docno) || (m ? m[0].toUpperCase() : null);
+            return k === docKey;
+          }
+          return false;
+        });
+
+        if (existingIdx >= 0) {
+          state.notifications[existingIdx] = notif;
+        } else {
+          state.notifications.unshift(notif);
+        }
         renderBacklogView();
+
+        if (notif.silent) return; // Do not chime or toast if silent/sync update
 
         // Only chime and show toast popup if this task is assigned to ME, or if general broadcast, or if Admin
         const isForMe = isAssignedToCurrentUser(notif) || !notif.assignee || state.isAdmin;
