@@ -248,15 +248,8 @@
       gap: 20px;
     }
 
-    .grid-feed {
-      display: grid;
-      grid-template-columns: 340px 1fr;
-      gap: 22px;
-      align-items: start;
-    }
-
     @media (max-width: 900px) {
-      .grid-2, .grid-feed {
+      .grid-2 {
         grid-template-columns: 1fr;
       }
     }
@@ -692,9 +685,6 @@
           <button class="btn btn-primary btn-sm" id="pushSubBtn" onclick="enablePushNotifications()">
             🔔 เปิดรับแจ้งเตือนบนเครื่องนี้
           </button>
-          <button class="btn btn-outline btn-sm" id="adminAuthBtn" onclick="handleAdminBtnClick()">
-            🔒 แอดมิน
-          </button>
           <button class="btn btn-outline btn-sm" onclick="toggleHeaderActions(true)" style="color: var(--text-muted); padding: 4px 8px; font-size: 0.74rem; border-color: rgba(255,255,255,0.15);" title="ซ่อนแถบนี้">
             ✕ ซ่อน
           </button>
@@ -783,9 +773,6 @@
       </button>
     </div>
 
-    <!-- Hidden legacy notif container if referenced -->
-    <div id="notifList" style="display: none;"></div>
-
     <!-- MAIN: DEDICATED BACKLOG PAGE (หน้างานซ่อม) -->
     <section id="tab-backlog" class="tab-pane active">
       <div class="card">
@@ -806,7 +793,7 @@
           <button class="filter-chip active" onclick="setBacklogTechFilter('all', this)">📋 ทั้งหมด</button>
           <button class="filter-chip" onclick="setBacklogTechFilter('elec', this)">⚡ งานไฟฟ้า (<span id="elecCountSpan">0</span>)</button>
           <button class="filter-chip" onclick="setBacklogTechFilter('air', this)">❄️ งานแอร์ (<span id="airCountSpan">0</span>)</button>
-          <button class="filter-chip" onclick="setBacklogTechFilter('pending_admin', this)" style="border-color: rgba(245, 158, 11, 0.4); color: #fbbf24;">⚠️ รอมอบหมาย (<span id="pendingAdminCountSpan">0</span>)</button>
+          <button class="filter-chip admin-only" onclick="setBacklogTechFilter('pending_admin', this)" style="display: none; border-color: rgba(245, 158, 11, 0.4); color: #fbbf24;">⚠️ รอมอบหมาย (<span id="pendingAdminCountSpan">0</span>)</button>
           <button class="filter-chip" onclick="setBacklogTechFilter('overdue', this)">🔴 เฉพาะงานเกินกำหนด</button>
         </div>
         <div id="backlogList" class="notif-list"></div>
@@ -830,7 +817,7 @@
           <!-- 1. เลือกกลุ่มงาน (Channel) -->
           <div class="form-group">
             <label class="form-label">1. เลือกกลุ่มงาน / ห้องแจ้งเตือน</label>
-            <select id="dispatchChannelSelect" class="form-control" onchange="onDispatchChannelChange()">
+            <select id="dispatchChannelSelect" class="form-control">
               <!-- populated dynamically -->
             </select>
           </div>
@@ -1057,9 +1044,35 @@
   <div id="toast-container"></div>
 
   <script>
-    const savedIsAdmin = (sessionStorage.getItem('adda_admin') || sessionStorage.getItem('notifyhub_admin')) === 'true';
     const savedUser = JSON.parse(localStorage.getItem('adda_user') || localStorage.getItem('notifyhub_user') || 'null');
-    const isActualAdmin = savedIsAdmin || (savedUser && (savedUser.role === 'admin' || savedUser.id === 'ADMIN'));
+    const savedAdminToken = localStorage.getItem('adda_admin_token') || sessionStorage.getItem('adda_admin_token') || sessionStorage.getItem('notifyhub_admin_token') || '';
+    const isActualAdmin = Boolean(
+      savedUser &&
+      (savedUser.role === 'admin' || savedUser.id === 'ADMIN') &&
+      savedAdminToken
+    );
+
+    function saveAdminSession(token) {
+      if (token) {
+        localStorage.setItem('adda_admin', 'true');
+        localStorage.setItem('adda_admin_token', token);
+        sessionStorage.setItem('adda_admin', 'true');
+        sessionStorage.setItem('adda_admin_token', token);
+      }
+    }
+
+    function clearAdminSession() {
+      localStorage.removeItem('adda_admin');
+      localStorage.removeItem('adda_admin_token');
+      sessionStorage.removeItem('adda_admin');
+      sessionStorage.removeItem('adda_admin_token');
+      sessionStorage.removeItem('notifyhub_admin');
+      sessionStorage.removeItem('notifyhub_admin_token');
+    }
+
+    if (!isActualAdmin) {
+      clearAdminSession();
+    }
 
     let state = {
       vapidPublicKey: '',
@@ -1068,18 +1081,16 @@
       notifications: [],
       technicians: [],
       currentUser: savedUser,
-      taskScope: isActualAdmin ? 'all' : 'mine',           // Admin defaults to 'all', Tech defaults to 'mine'
-      backlogTaskScope: isActualAdmin ? 'all' : 'mine',    // Admin defaults to 'all', Tech defaults to 'mine'
-      selectedChannel: 'all',
+      backlogTaskScope: isActualAdmin ? 'all' : 'mine',
       selectedBacklogFilter: 'all',
       soundEnabled: true,
       isAdmin: isActualAdmin,
-      adminToken: sessionStorage.getItem('adda_admin_token') || sessionStorage.getItem('notifyhub_admin_token') || '',
+      adminToken: isActualAdmin ? savedAdminToken : '',
       serverInfo: {}
     };
 
     // ==========================================
-    // AUTH & TECHNICIAN ACCESS CONTROL
+    // 1. AUTH & TECHNICIAN ACCESS CONTROL
     // ==========================================
     function checkUserAuth() {
       const overlay = document.getElementById('loginOverlay');
@@ -1087,6 +1098,9 @@
       const userNameDisplay = document.getElementById('userNameDisplay');
 
       if (!state.currentUser || !state.currentUser.id) {
+        state.isAdmin = false;
+        state.adminToken = '';
+        updateAdminUI();
         if (overlay) overlay.style.display = 'flex';
         if (userHeader) userHeader.style.display = 'none';
         const idInput = document.getElementById('employeeIdInput');
@@ -1094,10 +1108,23 @@
         return false;
       }
 
+      const userIsAdmin = Boolean(
+        (state.currentUser.role === 'admin' || state.currentUser.id === 'ADMIN') &&
+        state.adminToken
+      );
+      if (state.isAdmin !== userIsAdmin) {
+        state.isAdmin = userIsAdmin;
+        updateAdminUI();
+      }
+
       if (overlay) overlay.style.display = 'none';
       if (userHeader) {
         userHeader.style.display = 'flex';
-        if (userNameDisplay) userNameDisplay.textContent = `👷 ${state.currentUser.name} (${state.currentUser.id})`;
+        if (userNameDisplay) {
+          userNameDisplay.textContent = userIsAdmin
+            ? `👑 ${state.currentUser.name}`
+            : `👷 ${state.currentUser.name} (${state.currentUser.id})`;
+        }
       }
       return true;
     }
@@ -1128,29 +1155,31 @@
         if (res.ok && data.ok && data.user) {
           state.currentUser = data.user;
           localStorage.setItem('adda_user', JSON.stringify(data.user));
-          localStorage.setItem('notifyhub_user', JSON.stringify(data.user));
+          localStorage.removeItem('notifyhub_user');
 
-          // If logged in as Admin directly from the main input box
           if (data.isAdmin && data.adminToken) {
             state.isAdmin = true;
             state.adminToken = data.adminToken;
-            sessionStorage.setItem('adda_admin', 'true');
-            sessionStorage.setItem('adda_admin_token', data.adminToken);
-            sessionStorage.setItem('notifyhub_admin', 'true');
-            sessionStorage.setItem('notifyhub_admin_token', data.adminToken);
+            state.backlogTaskScope = 'all';
+            saveAdminSession(data.adminToken);
             syncPushSubscriptionUser();
             updateAdminUI();
-            loadAdminTokens();
-            loadTechniciansList();
             checkUserAuth();
-            switchTab('techs', document.getElementById('tabBtnTechs'));
-            showToast('👑 ยินดีต้อนรับผู้ดูแลระบบ', 'เข้าสู่ระบบแอดมินสำเร็จ เปิดเมนูจัดการช่างเรียบร้อยแล้ว');
+            switchTab('backlog', document.getElementById('tabBtnBacklog'));
+            showToast('👑 ยินดีต้อนรับผู้ดูแลระบบ', 'เข้าสู่ระบบแอดมินสำเร็จ แสดงรายการงานซ่อมทั้งหมด');
             renderAll();
             return;
           }
 
+          // Technician login: strictly clear any previous Admin session
+          state.isAdmin = false;
+          state.adminToken = '';
+          state.backlogTaskScope = 'mine';
+          clearAdminSession();
+          updateAdminUI();
           syncPushSubscriptionUser();
           checkUserAuth();
+          switchTab('backlog', document.getElementById('tabBtnBacklog'));
           showToast(`👋 ยินดีต้อนรับคุณ ${data.user.name}`, `เข้าสู่ระบบด้วยรหัส ${data.user.id} สำเร็จ`);
           renderAll();
           return;
@@ -1176,37 +1205,42 @@
     async function verifyUserStatus() {
       if (!state.currentUser || !state.currentUser.id) return;
       try {
-        const res = await fetch(`/api/auth/verify?id=${encodeURIComponent(state.currentUser.id)}`);
+        const res = await fetch(`/api/auth/verify?id=${encodeURIComponent(state.currentUser.id)}`, {
+          headers: getAdminHeaders()
+        });
         const data = await res.json();
         if (!data.active) {
           handleLogout(true);
         }
-      } catch (err) {
-        // network hiccup, don't force logout
-      }
+      } catch (err) {}
     }
 
     function handleLogout(forced = false) {
       if (!forced && !confirm('ต้องการออกจากระบบใช่หรือไม่?')) return;
       state.currentUser = null;
+      state.isAdmin = false;
+      state.adminToken = '';
       localStorage.removeItem('adda_user');
       localStorage.removeItem('notifyhub_user');
+      clearAdminSession();
+      updateAdminUI();
+      switchTab('backlog', document.getElementById('tabBtnBacklog'));
       syncPushSubscriptionUser();
       checkUserAuth();
       if (forced) {
         const errBox = document.getElementById('loginErrorMsg');
         if (errBox) {
-          errBox.textContent = '⚠️ รหัสพนักงานของคุณถูกลบออกจากระบบแล้ว ไม่สามารถเข้าใช้งานได้';
+          errBox.textContent = '⚠️ รหัสพนักงานของคุณถูกลบออกจากระบบ หรือเซสชันหมดอายุแล้ว';
           errBox.style.display = 'block';
         }
-        showToast('⚠️ สิทธิ์ถูกยกเลิก', 'รหัสพนักงานของคุณไม่ได้อยู่ในระบบแล้ว');
+        showToast('⚠️ สิทธิ์ถูกยกเลิก', 'กรุณาเข้าสู่ระบบใหม่อีกครั้ง');
       } else {
         showToast('👋 ออกจากระบบแล้ว', 'กรุณาระบุรหัสพนักงานใหม่เมื่อต้องการใช้งาน');
       }
     }
 
     // ==========================================
-    // ASSIGNEE MATCHING & SCOPE HELPERS
+    // 2. ASSIGNEE MATCHING & SCOPE HELPERS
     // ==========================================
     function matchAssignee(assigneeStr, user = state.currentUser) {
       if (!user || !user.id) return true;
@@ -1230,17 +1264,14 @@
     function isAssignedToCurrentUser(item, user = state.currentUser) {
       if (!user || !user.id) return true;
 
-      // If user is Admin, unmatched tasks (pending admin) belong to admin's attention scope
       if (state.isAdmin || user.role === 'admin' || user.id === 'ADMIN') {
         return item.taskStatus === 'pending_admin' || (item.title || '').includes('[รอแอดมินพิจารณา]');
       }
 
-      // 1. If task has assignee, strictly match against assignee field only!
       if (item.assignee && String(item.assignee).trim()) {
         return matchAssignee(item.assignee, user);
       }
 
-      // 2. Only if no assignee is set, check if technician ID or full name is mentioned in title
       const uid = String(user.id).trim().toLowerCase();
       const uname = String(user.name || '').trim().toLowerCase();
       const title = String(item.title || '').toLowerCase();
@@ -1269,13 +1300,6 @@
       }
     }
 
-    function setTaskScope(scope) {
-      state.taskScope = scope;
-      document.getElementById('scopeBtnMine')?.classList.toggle('active', scope === 'mine');
-      document.getElementById('scopeBtnAll')?.classList.toggle('active', scope === 'all');
-      renderNotifications();
-    }
-
     function setBacklogTaskScope(scope) {
       state.backlogTaskScope = scope;
       document.getElementById('backlogScopeBtnMine')?.classList.toggle('active', scope === 'mine');
@@ -1284,9 +1308,8 @@
     }
 
     // ==========================================
-    // ADMIN TECHNICIAN MANAGEMENT
+    // 3. ADMIN & TECHNICIAN MANAGEMENT
     // ==========================================
-    
     async function loadAdminTokens() {
       if (!state.isAdmin) return;
       try {
@@ -1302,6 +1325,7 @@
     }
 
     async function loadTechniciansList() {
+      if (!state.isAdmin) return;
       try {
         const res = await fetch('/api/technicians', { headers: getAdminHeaders() });
         const data = await res.json();
@@ -1345,7 +1369,7 @@
 
     function filterTechListUI() {
       const query = (document.getElementById('techSearchInput')?.value || '').trim().toLowerCase();
-      const filtered = state.technicians.filter(t => 
+      const filtered = state.technicians.filter(t =>
         String(t.id).toLowerCase().includes(query) || String(t.name).toLowerCase().includes(query)
       );
       renderTechsList(filtered);
@@ -1402,7 +1426,6 @@
       }
     }
 
-    
     function getAdminHeaders() {
       const token = state.adminToken || sessionStorage.getItem('adda_admin_token') || sessionStorage.getItem('notifyhub_admin_token') || '';
       return {
@@ -1415,11 +1438,8 @@
       if (state.isAdmin) {
         if (confirm('ต้องการออกจากระบบแอดมินใช่หรือไม่?')) {
           state.isAdmin = false;
-          sessionStorage.removeItem('adda_admin');
-          sessionStorage.removeItem('adda_admin_token');
-          sessionStorage.removeItem('notifyhub_admin');
-          sessionStorage.removeItem('notifyhub_admin_token');
           state.adminToken = '';
+          clearAdminSession();
           syncPushSubscriptionUser();
           updateAdminUI();
           switchTab('backlog', document.getElementById('tabBtnBacklog'));
@@ -1450,15 +1470,10 @@
         if (res.ok && data.isAdmin) {
           state.isAdmin = true;
           state.adminToken = data.adminToken || '';
-          sessionStorage.setItem('adda_admin', 'true');
-          sessionStorage.setItem('adda_admin_token', state.adminToken);
-          sessionStorage.setItem('notifyhub_admin', 'true');
-          sessionStorage.setItem('notifyhub_admin_token', state.adminToken);
+          saveAdminSession(state.adminToken);
           syncPushSubscriptionUser();
           closeAdminModal();
           updateAdminUI();
-          loadAdminTokens();
-          loadTechniciansList();
           showToast('👑 เข้าสู่ระบบแอดมินสำเร็จ', 'เปิดเมนูจัดการ Token และรายชื่อช่างแล้ว');
           return;
         }
@@ -1478,15 +1493,23 @@
       document.querySelectorAll('.admin-only').forEach(el => {
         el.style.display = state.isAdmin ? '' : 'none';
       });
+      if (!state.isAdmin && state.selectedBacklogFilter === 'pending_admin') {
+        state.selectedBacklogFilter = 'all';
+        const firstChip = document.querySelector('#backlogTechFilterBar .filter-chip');
+        document.querySelectorAll('#backlogTechFilterBar .filter-chip').forEach(b => b.classList.remove('active'));
+        if (firstChip) firstChip.classList.add('active');
+      }
       if (state.isAdmin) {
         loadTechniciansList();
         loadAdminTokens();
         initTestDispatchTab();
       }
-      renderNotifications();
+      renderBacklogView();
     }
 
-    // Web Audio unlock for iOS Safari (requires user gesture)
+    // ==========================================
+    // 4. AUDIO, TOAST & UI HELPERS
+    // ==========================================
     let globalAudioCtx = null;
     function unlockAudio() {
       if (!globalAudioCtx) {
@@ -1501,7 +1524,6 @@
     window.addEventListener('click', unlockAudio, { passive: true });
     window.addEventListener('touchstart', unlockAudio, { passive: true });
 
-    // Synthesize crisp notification chime using Web Audio API
     function playNotificationSound(priority = 'normal') {
       if (!state.soundEnabled) return;
       try {
@@ -1573,7 +1595,6 @@
       if (tabId === 'test-dispatch') initTestDispatchTab();
     }
 
-    // Load initial data
     async function initApp() {
       const savedHidden = localStorage.getItem('header_actions_hidden');
       if (savedHidden === 'true' || (savedHidden === null && window.Notification && Notification.permission === 'granted')) {
@@ -1587,13 +1608,15 @@
         verifyUserStatus();
       }
 
-      const res = await fetch('/api/init');
+      const res = await fetch('/api/init', { headers: getAdminHeaders() });
       const data = await res.json();
       state.vapidPublicKey = data.vapidPublicKey;
       state.channels = data.channels;
       state.tokens = data.tokens;
       state.notifications = data.notifications;
       state.serverInfo = data.serverInfo;
+      state.jobsData = data.jobsData || null;
+      state.skillsData = data.skillsData || null;
 
       updateAdminUI();
       renderAll();
@@ -1602,9 +1625,8 @@
       setInterval(verifyUserStatus, 60000);
     }
 
-    
     // ==========================================
-    // ADMIN TEST DISPATCH PLAYGROUND
+    // 5. ADMIN TEST DISPATCH PLAYGROUND
     // ==========================================
     function initTestDispatchTab() {
       populateDispatchChannels();
@@ -1618,10 +1640,7 @@
       if (!container) return;
 
       try {
-        const token = state.adminToken || sessionStorage.getItem('notifyhub_admin_token') || '';
-        const res = await fetch('/api/subscribers', {
-          headers: token ? { 'Authorization': `Bearer adm_${token}` } : {}
-        });
+        const res = await fetch('/api/subscribers', { headers: getAdminHeaders() });
         const data = await res.json();
         const subs = data.subscribers || [];
         if (countSpan) countSpan.textContent = subs.length;
@@ -1641,7 +1660,7 @@
           const badgeColor = isAdmin ? '#38bdf8' : (isTech ? '#4ade80' : '#94a3b8');
           const roleLabel = isAdmin ? '👑 แอดมิน' : (isTech ? `👷 ${escapeHtml(s.userName)} (รหัส ${escapeHtml(s.userId)})` : '📱 อุปกรณ์ทั่วไป (ยังไม่ได้ล็อกอิน)');
           const timeStr = s.updatedAt ? new Date(s.updatedAt).toLocaleTimeString('th-TH', { hour: '2-digit', minute: '2-digit' }) : '-';
-          
+
           return `
             <div style="display: flex; justify-content: space-between; align-items: center; background: rgba(255,255,255,0.03); border: 1px solid var(--border); border-radius: 8px; padding: 8px 12px; font-size: 0.84rem;">
               <div>
@@ -1663,10 +1682,9 @@
     async function deleteSubscriberDevice(subId) {
       if (!confirm('ต้องการลบอุปกรณ์นี้ออกจากระบบรับแจ้งเตือนใช่หรือไม่?')) return;
       try {
-        const token = state.adminToken || sessionStorage.getItem('notifyhub_admin_token') || '';
         await fetch(`/api/subscribers/${subId}`, {
           method: 'DELETE',
-          headers: token ? { 'Authorization': `Bearer adm_${token}` } : {}
+          headers: getAdminHeaders()
         });
         loadDispatchSubscribersList();
       } catch (err) {
@@ -1683,13 +1701,8 @@
         <option value="${c.id}">${escapeHtml(c.name)}</option>
       `).join('');
 
-      // Auto-select electric channel if available
       const elecCh = channels.find(c => c.name.includes('ไฟฟ้า'));
       if (elecCh) select.value = elecCh.id;
-    }
-
-    function onDispatchChannelChange() {
-      // Optional callback when channel changes
     }
 
     function renderDispatchTechGrid() {
@@ -1850,37 +1863,109 @@
     }
 
     function renderAll() {
-      renderChannelFilters();
-      renderNotifications();
       renderBacklogView();
       renderTokenSelects();
       renderTokensList();
       renderChannelsList();
       renderCodeExamples();
-      renderLanUrls();
     }
 
     function setBacklogTechFilter(filterVal, btn) {
+      if (filterVal === 'pending_admin' && !state.isAdmin) return;
       state.selectedBacklogFilter = filterVal;
       document.querySelectorAll('#backlogTechFilterBar .filter-chip').forEach(b => b.classList.remove('active'));
       if (btn) btn.classList.add('active');
       renderBacklogView();
     }
 
+    function normBacklogItem(n) {
+      if (!n) return n;
+      if (n.title && n.message) return n;
+      const isAir = n.jobType === '3' || (n.category || '').includes('แอร์');
+      const typeBadge = isAir ? '❄️ [แอร์]' : '⚡ [ไฟฟ้า]';
+      const isOverdue = Boolean(n.isOverdue || n.priority === 'urgent');
+      const statusBadge = n.statusBadge || (isOverdue ? `🔴 [เกินกำหนด ${n.estDate || ''}]` : `🟡 [กำหนดเสร็จ ${n.estDate || ''}]`);
+      const locStr = n.location ? ` (${n.location})` : '';
+      const timeShort = (n.time1 || '').slice(0, 5);
+      return {
+        id: n.id || n.docno,
+        docno: n.docno,
+        title: `${typeBadge} ${n.docno} ${statusBadge} ${n.deptName || ''}${locStr}`,
+        message: [
+          `🔧 อาการที่เสีย: ${n.symptom || '-'}`,
+          `📅 วันที่แจ้ง: ${n.date1 || '-'} ${timeShort} น. | วันที่รับเรื่อง: ${n.recvDate || '-'}`,
+          `⏳ ประมาณงานเสร็จ: ${n.estDate || '-'} | ผู้รับเรื่อง: ${n.receiver || '-'}`,
+          `👤 ผู้แจ้งซ่อม: ${n.requester || '-'}`
+        ].join('\n'),
+        assignee: n.assignee || n.techs || 'ยังไม่ระบุช่าง',
+        priority: n.priority || (isOverdue ? 'urgent' : 'high'),
+        taskStatus: n.taskStatus || n.status || 'in_progress',
+        channelName: isAir ? '❄️ งานค้างซ่อม: แอร์' : '⚡ งานค้างซ่อม: ไฟฟ้า',
+        image: n.image || null,
+        metadata: {
+          docno: n.docno,
+          jobType: n.jobType,
+          deptName: n.deptName,
+          location: n.location,
+          symptom: n.symptom,
+          date1: n.date1,
+          time1: n.time1,
+          requester: n.requester
+        }
+      };
+    }
+
     function renderBacklogView() {
-      let allBacklog = state.notifications.filter(n => (n.channelName || '').includes('งานค้าง') || n.isTask || (n.title || '').includes('[ไฟฟ้า]') || (n.title || '').includes('[แอร์]'));
-      if (allBacklog.length === 0 && state.notifications.length > 0) {
-        allBacklog = state.notifications;
+      // Check if structured Jop database is loaded
+      let acceptedBacklog = [];
+      let pendingAdminTotal = [];
+
+      if (state.jobsData && state.jobsData.allJobs && state.jobsData.allJobs.length > 0) {
+        acceptedBacklog = state.jobsData.allJobs.map(normBacklogItem);
+        if (state.jobsData.unmatchedPendingAdmin && state.jobsData.unmatchedPendingAdmin.jobs) {
+          pendingAdminTotal = state.jobsData.unmatchedPendingAdmin.jobs.map(normBacklogItem);
+        }
+      } else {
+        // Fallback to notifications array
+        let rawBacklog = state.notifications.filter(n =>
+          n.message !== 'temp_upload' &&
+          ((n.channelName || '').includes('งานค้าง') || n.isTask || (n.title || '').includes('[ไฟฟ้า]') || (n.title || '').includes('[แอร์]') || n.taskStatus === 'pending_admin')
+        );
+        if (rawBacklog.length === 0 && state.notifications.length > 0) {
+          rawBacklog = state.notifications.filter(n => n.message !== 'temp_upload');
+        }
+
+        const seenDocs = new Set();
+        const allBacklog = [];
+        for (const n of rawBacklog) {
+          const m = (n.title || '').match(/IF\d+/i);
+          const docKey = (n.metadata && n.metadata.docno) || (m ? m[0].toUpperCase() : null);
+          if (docKey) {
+            if (seenDocs.has(docKey)) continue;
+            seenDocs.add(docKey);
+          }
+          allBacklog.push(n);
+        }
+        pendingAdminTotal = allBacklog.filter(n => n.taskStatus === 'pending_admin' || (n.title || '').includes('[รอแอดมินพิจารณา]'));
+        acceptedBacklog = allBacklog.filter(n => !(n.taskStatus === 'pending_admin' || (n.title || '').includes('[รอแอดมินพิจารณา]')));
       }
 
-      // Count pending admin (unmatched tasks)
-      const pendingAdminCount = allBacklog.filter(n => n.taskStatus === 'pending_admin' || (n.title || '').includes('[รอแอดมินพิจารณา]')).length;
-      const myBacklogCount = state.isAdmin ? pendingAdminCount : allBacklog.filter(n => isAssignedToCurrentUser(n)).length;
+      // If technician is logged in, extract their personal job set directly from Jop DB!
+      let myTechJobs = [];
+      if (state.currentUser && state.currentUser.id && !state.isAdmin) {
+        if (state.jobsData && state.jobsData.byTechnician && state.jobsData.byTechnician[state.currentUser.id]) {
+          myTechJobs = (state.jobsData.byTechnician[state.currentUser.id].jobs || []).map(normBacklogItem);
+        } else {
+          myTechJobs = acceptedBacklog.filter(n => isAssignedToCurrentUser(n));
+        }
+      }
+
+      const myBacklogCount = state.isAdmin ? pendingAdminTotal.length : myTechJobs.length;
 
       const myBacklogScopeSpan = document.getElementById('myBacklogScopeCount');
       const allBacklogScopeSpan = document.getElementById('allBacklogScopeCount');
       if (myBacklogScopeSpan) myBacklogScopeSpan.textContent = myBacklogCount;
-      if (allBacklogScopeSpan) allBacklogScopeSpan.textContent = allBacklog.length;
+      if (allBacklogScopeSpan) allBacklogScopeSpan.textContent = acceptedBacklog.length;
 
       const myScopeLabel = document.getElementById('myBacklogScopeLabel');
       if (myScopeLabel) {
@@ -1891,25 +1976,25 @@
       document.getElementById('backlogScopeBtnMine')?.classList.toggle('active', state.backlogTaskScope === 'mine');
       document.getElementById('backlogScopeBtnAll')?.classList.toggle('active', state.backlogTaskScope === 'all');
 
-      let baseList = allBacklog;
+      let baseList = acceptedBacklog;
       if (state.backlogTaskScope === 'mine') {
         if (state.isAdmin) {
           // For Admin: starred tasks = unmatched tasks waiting for admin decision!
-          baseList = allBacklog.filter(n => n.taskStatus === 'pending_admin' || (n.title || '').includes('[รอแอดมินพิจารณา]'));
+          baseList = pendingAdminTotal;
         } else if (state.currentUser) {
-          baseList = baseList.filter(n => isAssignedToCurrentUser(n));
+          // For Technician: their dedicated set of jobs!
+          baseList = myTechJobs;
         }
       }
 
-      // Counts for summary pills and chips (always calculated from allBacklog so numbers are complete)
-      const elecJobsTotal = allBacklog.filter(n => (n.channelName || '').includes('ไฟฟ้า') || (n.title || '').includes('[ไฟฟ้า]'));
-      const airJobsTotal = allBacklog.filter(n => (n.channelName || '').includes('แอร์') || (n.title || '').includes('[แอร์]'));
-      const pendingAdminTotal = allBacklog.filter(n => n.taskStatus === 'pending_admin' || (n.title || '').includes('[รอแอดมินพิจารณา]'));
-      const overdueTotal = allBacklog.filter(n => n.priority === 'urgent');
-      const normalTotal = allBacklog.filter(n => n.priority !== 'urgent');
+      // Counts for summary pills and chips
+      const elecJobsTotal = acceptedBacklog.filter(n => (n.channelName || '').includes('ไฟฟ้า') || (n.title || '').includes('[ไฟฟ้า]'));
+      const airJobsTotal = acceptedBacklog.filter(n => (n.channelName || '').includes('แอร์') || (n.title || '').includes('[แอร์]'));
+      const overdueTotal = acceptedBacklog.filter(n => n.priority === 'urgent');
+      const normalTotal = acceptedBacklog.filter(n => n.priority !== 'urgent');
 
       const badgeEl = document.getElementById('backlogCountBadge');
-      if (badgeEl) badgeEl.textContent = allBacklog.length;
+      if (badgeEl) badgeEl.textContent = acceptedBacklog.length;
 
       const elecSpan = document.getElementById('elecCountSpan');
       if (elecSpan) elecSpan.textContent = elecJobsTotal.length;
@@ -1925,7 +2010,7 @@
         summaryEl.innerHTML = `
           <span class="pill" style="background:rgba(245,158,11,0.2);color:#fcd34d;">⚡ ไฟฟ้า ${elecJobsTotal.length} งาน</span>
           <span class="pill" style="background:rgba(6,182,212,0.2);color:#67e8f9;">❄️ แอร์ ${airJobsTotal.length} งาน</span>
-          ${pendingAdminTotal.length > 0 ? `<span class="pill" style="background:rgba(239,68,68,0.25);color:#fca5a5;border:1px solid rgba(239,68,68,0.5);font-weight:700;">⚠️ รอมอบหมาย ${pendingAdminTotal.length} งาน</span>` : ''}
+          ${(state.isAdmin && pendingAdminTotal.length > 0) ? `<span class="pill" style="background:rgba(239,68,68,0.25);color:#fca5a5;border:1px solid rgba(239,68,68,0.5);font-weight:700;">⚠️ รอมอบหมาย ${pendingAdminTotal.length} งาน</span>` : ''}
           <span class="pill pill-urgent">🔴 เกินกำหนด ${overdueTotal.length} งาน</span>
           <span class="pill" style="background:rgba(6,199,85,0.2);color:#4ade80;">🟢 อยู่ในกำหนด ${normalTotal.length} งาน</span>
         `;
@@ -1937,7 +2022,7 @@
       } else if (state.selectedBacklogFilter === 'air') {
         filtered = baseList.filter(n => (n.channelName || '').includes('แอร์') || (n.title || '').includes('[แอร์]'));
       } else if (state.selectedBacklogFilter === 'pending_admin') {
-        filtered = baseList.filter(n => n.taskStatus === 'pending_admin' || (n.title || '').includes('[รอแอดมินพิจารณา]'));
+        filtered = state.isAdmin ? pendingAdminTotal : [];
       } else if (state.selectedBacklogFilter === 'overdue') {
         filtered = baseList.filter(n => n.priority === 'urgent');
       }
@@ -2047,128 +2132,7 @@
       }).join('');
     }
 
-    function renderLanUrls() {
-      const box = document.getElementById('lanUrlsList');
-      if (!box) return;
-      const urls = (state.serverInfo && state.serverInfo.urls) || [];
-      if (urls.length === 0) {
-        box.innerHTML = `<code>${window.location.origin}</code>`;
-      } else {
-        box.innerHTML = urls.map(u => `<div style="margin-top:2px;"><a href="${u}" target="_blank" style="color:#4ade80;">${u}</a></div>`).join('');
-      }
-    }
-
-    function renderChannelFilters() {
-      const bar = document.getElementById('channelFilterBar');
-      let html = `<button class="filter-chip ${state.selectedChannel === 'all' ? 'active' : ''}" onclick="setChannelFilter('all', this)">ทั้งหมด (${state.notifications.length})</button>`;
-      state.channels
-        .filter(c => !['ch_default', 'ch_tasks', 'ch_urgent'].includes(c.id))
-        .forEach(c => {
-          const count = state.notifications.filter(n => n.channelId === c.id).length;
-          html += `<button class="filter-chip ${state.selectedChannel === c.id ? 'active' : ''}" onclick="setChannelFilter('${c.id}', this)">${escapeHtml(c.name)} (${count})</button>`;
-        });
-      bar.innerHTML = html;
-      document.getElementById('notifCountBadge').textContent = state.notifications.length;
-    }
-
-    function setChannelFilter(channelId, btn) {
-      state.selectedChannel = channelId;
-      renderChannelFilters();
-      renderNotifications();
-    }
-
-    function renderNotifications() {
-      const list = document.getElementById('notifList');
-      if (!list) return;
-
-      // Update Scope counters
-      const myCount = state.notifications.filter(n => isAssignedToCurrentUser(n)).length;
-      const allCount = state.notifications.length;
-      const myScopeSpan = document.getElementById('myScopeCount');
-      const allScopeSpan = document.getElementById('allScopeCount');
-      if (myScopeSpan) myScopeSpan.textContent = myCount;
-      if (allScopeSpan) allScopeSpan.textContent = allCount;
-
-      let filtered = state.selectedChannel === 'all'
-        ? state.notifications
-        : state.notifications.filter(n => n.channelId === state.selectedChannel);
-
-      // Filter by taskScope (⭐ งานของฉัน vs 🌐 งานทั้งหมด)
-      if (state.taskScope === 'mine' && state.currentUser) {
-        filtered = filtered.filter(n => isAssignedToCurrentUser(n));
-      }
-
-      if (filtered.length === 0) {
-        if (state.taskScope === 'mine') {
-          list.innerHTML = `
-            <div class="card" style="text-align: center; padding: 48px 20px; color: var(--text-muted);">
-              <div style="font-size: 2.5rem; margin-bottom: 10px;">🎉</div>
-              <div style="font-weight: 600; font-size: 1.05rem; color: #f8fafc; margin-bottom: 6px;">ไม่มีงานที่ได้รับมอบหมายในขณะนี้</div>
-              <div style="font-size: 0.88rem;">คุณสามารถแตะปุ่ม <strong>"🌐 งานทั้งหมด"</strong> ด้านบนเพื่อดูงานอื่นๆ ในระบบได้ครับ</div>
-            </div>
-          `;
-        } else {
-          list.innerHTML = `
-            <div class="card" style="text-align: center; padding: 48px 20px; color: var(--text-muted);">
-              <div style="font-size: 2.5rem; margin-bottom: 10px;">📭</div>
-              <div>ยังไม่มีรายการแจ้งเตือนในหมวดหมู่นี้</div>
-            </div>
-          `;
-        }
-        return;
-      }
-
-      list.innerHTML = filtered.map(n => {
-        const timeStr = new Date(n.createdAt).toLocaleString('th-TH');
-        const priorityBadge = n.priority === 'urgent'
-          ? `<span class="pill pill-urgent">🔴 ด่วนที่สุด</span>`
-          : n.priority === 'high'
-          ? `<span class="pill pill-high">🟡 สำคัญ</span>`
-          : '';
-
-        const assigneeBadge = n.assignee
-          ? `<span class="pill" style="background: rgba(59,130,246,0.2); color: #93c5fd;">👤 ผู้รับงาน: ${escapeHtml(n.assignee)}</span>`
-          : '';
-
-        const taskControls = n.isTask ? `
-          <div class="task-status-bar">
-            <span style="font-size: 0.78rem; color: var(--text-muted);">สถานะงาน:</span>
-            <button class="status-btn ${n.taskStatus === 'pending' ? 'active-pending' : ''}" onclick="updateTaskStatus('${n.id}', 'pending')">⏳ รอรับงาน</button>
-            <button class="status-btn ${n.taskStatus === 'in_progress' ? 'active-in_progress' : ''}" onclick="updateTaskStatus('${n.id}', 'in_progress')">🔧 กำลังทำ</button>
-            <button class="status-btn ${n.taskStatus === 'done' ? 'active-done' : ''}" onclick="updateTaskStatus('${n.id}', 'done')">✅ เสร็จสิ้น</button>
-          </div>
-        ` : '<div></div>';
-
-        return `
-          <div class="notif-card priority-${n.priority}" style="border-left-color: ${n.priority === 'urgent' ? '#ef4444' : (n.channelColor || '#06C755')}">
-            <div class="notif-top">
-              <div class="notif-badges">
-                <span class="pill" style="border: 1px solid ${n.channelColor || '#06C755'}; color: #fff;">
-                  ${escapeHtml(n.channelName)}
-                </span>
-                ${priorityBadge}
-                ${assigneeBadge}
-              </div>
-              <div class="notif-time">${timeStr}</div>
-            </div>
-
-            <div class="notif-title">${escapeHtml(n.title)}</div>
-            <div class="notif-message">${escapeHtml(n.message)}</div>
-
-            ${n.image ? `<img src="${escapeHtml(n.image)}" class="notif-image" alt="attachment" />` : ''}
-            ${n.url ? `<div style="margin-bottom: 8px;"><a href="${escapeHtml(n.url)}" target="_blank" style="color: #38bdf8; font-size: 0.88rem;">🔗 เปิดลิงก์แนบ: ${escapeHtml(n.url)}</a></div>` : ''}
-
-            <div class="notif-footer">
-              ${taskControls}
-              ${state.isAdmin ? `<button class="btn btn-outline btn-sm" onclick="deleteNotification('${n.id}')" title="ลบข้อความนี้">🗑️</button>` : ''}
-            </div>
-          </div>
-        `;
-      }).join('');
-    }
-
     function renderTokenSelects() {
-      const sendSel = document.getElementById('sendTokenSelect');
       const docSel = document.getElementById('docTokenSelect');
       const chSel = document.getElementById('newTokenChannel');
 
@@ -2177,14 +2141,13 @@
         return `<option value="${escapeHtml(t.token)}">${escapeHtml(t.name)} (${escapeHtml(ch ? ch.name : 'ทั่วไป')})</option>`;
       }).join('');
 
-      if (sendSel) sendSel.innerHTML = tokenOptions;
       if (docSel) docSel.innerHTML = tokenOptions;
-
       if (chSel) chSel.innerHTML = state.channels.map(c => `<option value="${c.id}">${escapeHtml(c.name)}</option>`).join('');
     }
 
     function renderTokensList() {
       const container = document.getElementById('tokensList');
+      if (!container) return;
       container.innerHTML = state.tokens.map(t => {
         const ch = state.channels.find(c => c.id === t.channelId);
         return `
@@ -2207,6 +2170,7 @@
 
     function renderChannelsList() {
       const container = document.getElementById('channelsList');
+      if (!container) return;
       container.innerHTML = state.channels.map(c => `
         <div class="token-item" style="border-left: 4px solid ${c.color};">
           <div>
@@ -2222,14 +2186,19 @@
       const token = document.getElementById('docTokenSelect')?.value || 'YOUR_TOKEN';
       const endpoint = `${window.location.origin}/api/notify`;
 
-      document.getElementById('codeCurl').textContent =
+      const curlEl = document.getElementById('codeCurl');
+      if (curlEl) {
+        curlEl.textContent =
 `curl -X POST ${endpoint} \\
   -H "Authorization: Bearer ${token}" \\
   -d "message=มีงานใหม่เข้า!" \\
   -d "assignee=ทีมช่าง" \\
   -d "priority=high"`;
+      }
 
-      document.getElementById('codePython').textContent =
+      const pyEl = document.getElementById('codePython');
+      if (pyEl) {
+        pyEl.textContent =
 `import requests
 
 url = "${endpoint}"
@@ -2242,8 +2211,11 @@ data = {
 }
 r = requests.post(url, headers=headers, data=data)
 print(r.json())`;
+      }
 
-      document.getElementById('codeNode').textContent =
+      const nodeEl = document.getElementById('codeNode');
+      if (nodeEl) {
+        nodeEl.textContent =
 `await fetch("${endpoint}", {
   method: "POST",
   headers: {
@@ -2257,8 +2229,11 @@ print(r.json())`;
     priority: "urgent"
   })
 });`;
+      }
 
-      document.getElementById('codeGAS').textContent =
+      const gasEl = document.getElementById('codeGAS');
+      if (gasEl) {
+        gasEl.textContent =
 `function sendNotify() {
   var url = "${endpoint}";
   var options = {
@@ -2271,42 +2246,10 @@ print(r.json())`;
   };
   UrlFetchApp.fetch(url, options);
 }`;
-    }
-
-    // Actions
-    async function sendTestNotification(e) {
-      e.preventDefault();
-      const token = document.getElementById('sendTokenSelect').value;
-      const title = document.getElementById('sendTitle').value;
-      const message = document.getElementById('sendMessage').value;
-      const assignee = document.getElementById('sendAssignee').value;
-      const priority = document.getElementById('sendPriority').value;
-      const url = document.getElementById('sendUrl').value;
-
-      const res = await fetch('/api/notify', {
-        method: 'POST',
-        headers: {
-          'Authorization': `Bearer ${token}`,
-          'Content-Type': 'application/json'
-        },
-        body: JSON.stringify({
-          title,
-          message,
-          assignee: assignee || null,
-          priority,
-          url: url || null,
-          isTask: Boolean(assignee)
-        })
-      });
-
-      const data = await res.json();
-      if (res.ok) {
-        showToast('🚀 ส่งแจ้งเตือนสำเร็จ!', message);
-      } else {
-        alert(data.message || 'เกิดข้อผิดพลาดในการส่ง');
       }
     }
 
+    // Actions
     async function updateTaskStatus(id, taskStatus) {
       await fetch(`/api/notifications/${id}/status`, {
         method: 'PATCH',
@@ -2317,7 +2260,7 @@ print(r.json())`;
 
     async function handleAdminAcceptAndAssign(notifId, docno) {
       if (!state.isAdmin) {
-        openAdminModal();
+        handleAdminBtnClick();
         return;
       }
 
@@ -2381,7 +2324,7 @@ print(r.json())`;
 
     async function handleAdminDismissUnmatched(notifId, docno) {
       if (!state.isAdmin) {
-        openAdminModal();
+        handleAdminBtnClick();
         return;
       }
 
@@ -2407,15 +2350,6 @@ print(r.json())`;
       } catch (err) {
         alert('เกิดข้อผิดพลาด: ' + err.message);
       }
-    }
-
-    async function deleteNotification(id) {
-      await fetch(`/api/notifications/${id}`, { method: 'DELETE', headers: getAdminHeaders() });
-    }
-
-    async function clearAllNotifications() {
-      if (!confirm('ต้องการล้างประวัติการแจ้งเตือนทั้งหมดใช่หรือไม่?')) return;
-      await fetch('/api/notifications', { method: 'DELETE', headers: getAdminHeaders() });
     }
 
     async function createToken(e) {
@@ -2482,8 +2416,6 @@ print(r.json())`;
       es.addEventListener('notification', (e) => {
         const notif = JSON.parse(e.data);
         state.notifications.unshift(notif);
-        renderChannelFilters();
-        renderNotifications();
         renderBacklogView();
 
         // Only chime and show toast popup if this task is assigned to ME, or if general broadcast, or if Admin
@@ -2504,7 +2436,6 @@ print(r.json())`;
         const idx = state.notifications.findIndex(n => n.id === updated.id);
         if (idx >= 0) {
           state.notifications[idx] = updated;
-          renderNotifications();
           renderBacklogView();
         }
       });
@@ -2512,20 +2443,37 @@ print(r.json())`;
       es.addEventListener('notification_deleted', (e) => {
         const { id } = JSON.parse(e.data);
         state.notifications = state.notifications.filter(n => n.id !== id);
-        renderChannelFilters();
-        renderNotifications();
         renderBacklogView();
       });
 
       es.addEventListener('notifications_cleared', () => {
         state.notifications = [];
-        renderChannelFilters();
-        renderNotifications();
         renderBacklogView();
+      });
+
+      es.addEventListener('jobs_update', async () => {
+        try {
+          const r = await fetch('/api/jobs', { headers: getAdminHeaders() });
+          const d = await r.json();
+          if (d.ok) {
+            state.jobsData = d.data || d;
+            renderBacklogView();
+          }
+        } catch(e) {}
+      });
+
+      es.addEventListener('skills_update', async () => {
+        try {
+          const r = await fetch('/api/skills');
+          const d = await r.json();
+          if (d.ok) {
+            state.skillsData = d.data || d;
+          }
+        } catch(e) {}
       });
     }
 
-    // Device Label Helper
+    // Device & Push Helpers
     function getDeviceLabel() {
       const ua = navigator.userAgent;
       if (/iphone/i.test(ua)) return 'iPhone (iOS)';
@@ -2539,6 +2487,24 @@ print(r.json())`;
       return 'อุปกรณ์ทั่วไป';
     }
 
+    function isIOSDevice() {
+      return /iphone|ipad|ipod/i.test(navigator.userAgent) ||
+        (navigator.platform === 'MacIntel' && navigator.maxTouchPoints > 1);
+    }
+
+    function isStandalonePWA() {
+      return Boolean(window.navigator.standalone || window.matchMedia('(display-mode: standalone)').matches);
+    }
+
+    function markPushButtonSubscribed() {
+      const btn = document.getElementById('pushSubBtn');
+      if (btn) {
+        btn.textContent = '✅ เปิดรับแจ้งเตือนบนเครื่องนี้แล้ว';
+        btn.classList.remove('btn-primary');
+        btn.classList.add('btn-outline');
+      }
+    }
+
     function openIOSGuideModal() {
       const m = document.getElementById('iosGuideModal');
       if (m) m.classList.add('open');
@@ -2548,7 +2514,6 @@ print(r.json())`;
       if (m) m.classList.remove('open');
     }
 
-    // Web Push Subscription Helpers
     function urlBase64ToUint8Array(base64String) {
       const padding = '='.repeat((4 - base64String.length % 4) % 4);
       const base64 = (base64String + padding).replace(/-/g, '+').replace(/_/g, '/');
@@ -2587,11 +2552,8 @@ print(r.json())`;
     }
 
     async function checkExistingPushSubscription() {
-      const isIOS = /iphone|ipad|ipod/i.test(navigator.userAgent) || (navigator.platform === 'MacIntel' && navigator.maxTouchPoints > 1);
-      const isStandalone = window.navigator.standalone || window.matchMedia('(display-mode: standalone)').matches;
-
       // On iOS Safari tab (not added to Home screen): Guide user to Home Screen
-      if (isIOS && !isStandalone) {
+      if (isIOSDevice() && !isStandalonePWA()) {
         const btn = document.getElementById('pushSubBtn');
         if (btn) {
           btn.textContent = '📲 วิธีเปิดแจ้งเตือนบน iOS';
@@ -2607,12 +2569,7 @@ print(r.json())`;
         const reg = await navigator.serviceWorker.register('/sw.js');
         const sub = await reg.pushManager.getSubscription();
         if (sub) {
-          const btn = document.getElementById('pushSubBtn');
-          if (btn) {
-            btn.textContent = '✅ เปิดรับแจ้งเตือนบนเครื่องนี้แล้ว';
-            btn.classList.remove('btn-primary');
-            btn.classList.add('btn-outline');
-          }
+          markPushButtonSubscribed();
           await syncPushSubscriptionUser(sub);
         }
       } catch (err) {
@@ -2621,10 +2578,7 @@ print(r.json())`;
     }
 
     async function enablePushNotifications() {
-      const isIOS = /iphone|ipad|ipod/i.test(navigator.userAgent) || (navigator.platform === 'MacIntel' && navigator.maxTouchPoints > 1);
-      const isStandalone = window.navigator.standalone || window.matchMedia('(display-mode: standalone)').matches;
-
-      if (isIOS && !isStandalone) {
+      if (isIOSDevice() && !isStandalonePWA()) {
         openIOSGuideModal();
         return;
       }
@@ -2635,7 +2589,7 @@ print(r.json())`;
       }
 
       if (Notification.permission === 'denied') {
-        if (isIOS) {
+        if (isIOSDevice()) {
           alert('⚠️ การแจ้งเตือนถูกปิดกั้นใน iPhone ของคุณ:\nกรุณาไปที่ การตั้งค่า (Settings) บน iPhone > การแจ้งเตือน (Notifications) > ADDA Service > เปิด "อนุญาตการแจ้งเตือน" (Allow Notifications)');
         } else {
           alert('⚠️ การแจ้งเตือนถูกปิดกั้นในเบราว์เซอร์:\nกรุณาแตะที่ไอคอนแม่กุญแจ 🔒 ที่แถบ URL ด้านบน แล้วเลือก "อนุญาตการแจ้งเตือน"');
@@ -2672,24 +2626,9 @@ print(r.json())`;
           });
         }
 
-        await fetch('/api/subscribe', {
-          method: 'POST',
-          headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify({
-            subscription: sub,
-            deviceName: getDeviceLabel(),
-            userId: state.currentUser?.id || null,
-            userName: state.currentUser?.name || null,
-            role: state.isAdmin ? 'admin' : (state.currentUser?.role || (state.currentUser?.id ? 'technician' : 'anonymous'))
-          })
-        });
+        await syncPushSubscriptionUser(sub);
+        markPushButtonSubscribed();
 
-        const btn = document.getElementById('pushSubBtn');
-        if (btn) {
-          btn.textContent = '✅ เปิดรับแจ้งเตือนบนเครื่องนี้แล้ว';
-          btn.classList.remove('btn-primary');
-          btn.classList.add('btn-outline');
-        }
         showToast('🔔 เปิดรับแจ้งเตือนสำเร็จ!', 'เครื่องนี้พร้อมรับเสียงเตือนและ Push Notification ทันทีที่มีงานใหม่');
         playNotificationSound('normal');
         setTimeout(() => {

@@ -6,17 +6,36 @@ const crypto = require('crypto');
 const fs = require('fs');
 const path = require('path');
 const os = require('os');
+const { execFile } = require('child_process');
+const {
+  DATA_DIR,
+  SKILLS_FILE,
+  JOP_FILE,
+  BOT_CONFIG_FILE,
+  BOT_STATE_FILE,
+  ensureDir,
+  readJsonSafe,
+  writeJsonSafe,
+  buildSkillsDb,
+  buildJopDb
+} = require('./build_db_files');
 
 const app = express();
 const PORT = process.env.PORT || 3000;
+const BOT_DAEMON_URL = 'http://127.0.0.1:3055';
 
-// Folders setup
-const DATA_DIR = path.join(__dirname, 'data');
 const UPLOAD_DIR = path.join(__dirname, 'public', 'uploads');
 const DB_FILE = path.join(DATA_DIR, 'db.json');
+const SQL_BRIDGE = path.join(__dirname, 'SqlBridge.exe');
 
-if (!fs.existsSync(DATA_DIR)) fs.mkdirSync(DATA_DIR, { recursive: true });
-if (!fs.existsSync(UPLOAD_DIR)) fs.mkdirSync(UPLOAD_DIR, { recursive: true });
+// SHA-256 digests for cloud fallback (avoids storing plaintext admin password in source code)
+const FALLBACK_ADMIN_PASSWORD_HASHES = new Set([
+  '6c3c179eb923164b0a08365d2f93ddf3185605ad123ad1a8b0992c985a2e2583',
+  'f82576f4cab493dbc199b833ad5e9f7080db40d1516c13e86c6a9e39669c41ec'
+]);
+
+ensureDir(DATA_DIR);
+ensureDir(UPLOAD_DIR);
 
 // Multer setup for imageFile uploads (LINE Notify compatible)
 const storage = multer.diskStorage({
@@ -33,19 +52,12 @@ app.use(express.json({ limit: '10mb' }));
 app.use(express.urlencoded({ extended: true, limit: '10mb' }));
 app.use(express.static(path.join(__dirname, 'public')));
 
-// Load or initialize database
+// ==========================================
+// 0. DATABASE & HELPER UTILITIES
+// ==========================================
 function loadDB() {
-  let data;
-  if (fs.existsSync(DB_FILE)) {
-    try {
-      const raw = fs.readFileSync(DB_FILE, 'utf8').replace(/^\uFEFF/, '').trim();
-      data = JSON.parse(raw);
-    } catch (err) {
-      console.error('Error reading DB file, initializing fresh DB:', err);
-    }
-  }
+  let data = readJsonSafe(DB_FILE, null);
 
-  // Use environment VAPID keys (for Render/Cloud) or generate on first run
   const vapidKeys = (process.env.VAPID_PUBLIC_KEY && process.env.VAPID_PRIVATE_KEY)
     ? { publicKey: process.env.VAPID_PUBLIC_KEY, privateKey: process.env.VAPID_PRIVATE_KEY }
     : {
@@ -54,61 +66,50 @@ function loadDB() {
       };
   const now = new Date().toISOString();
 
-  const initialDB = {
-    vapidKeys,
-    channels: [
-      {
-        id: 'ch_1793091370273',
-        name: '⚡ งานค้างซ่อม: ไฟฟ้า',
-        description: 'รายการงานค้างซ่อมหมวดไฟฟ้า/โทรศัพท์',
-        color: '#F59E0B',
-        createdAt: now
-      },
-      {
-        id: 'ch_1793091370293',
-        name: '❄️ งานค้างซ่อม: แอร์',
-        description: 'รายการงานค้างซ่อมหมวดแอร์ (เครื่องปรับอากาศ)',
-        color: '#06B6D4',
-        createdAt: now
-      }
-    ],
-    tokens: [
-      {
-        id: 'tok_demo_1',
-        name: 'Token ทดสอบระบบแจกงาน',
-        token: 'NOTIFY-TASK-2026-DEMO',
-        channelId: 'ch_1793091370273',
-        createdAt: now,
-        lastUsedAt: null,
-        usageCount: 1
-      }
-    ],
-    subscriptions: [],
-    notifications: [],
-    technicians: []
-  };
+  if (!data) {
+    data = {
+      vapidKeys,
+      channels: [
+        {
+          id: 'ch_1793174210712',
+          name: '⚡ งานค้างซ่อม: ไฟฟ้า',
+          description: 'รายการงานค้างซ่อมหมวดไฟฟ้า/โทรศัพท์',
+          color: '#F59E0B',
+          createdAt: now
+        },
+        {
+          id: 'ch_1793174215636',
+          name: '❄️ งานค้างซ่อม: แอร์',
+          description: 'รายการงานค้างซ่อมหมวดแอร์ (เครื่องปรับอากาศ)',
+          color: '#06B6D4',
+          createdAt: now
+        }
+      ],
+      tokens: [
+        {
+          id: 'tok_demo_1',
+          name: 'Token ทดสอบระบบแจกงาน',
+          token: 'NOTIFY-TASK-2026-DEMO',
+          channelId: 'ch_1793174210712',
+          createdAt: now,
+          lastUsedAt: null,
+          usageCount: 1
+        }
+      ],
+      subscriptions: [],
+      notifications: [],
+      technicians: []
+    };
+  }
 
-  if (!data) data = initialDB;
-
-  // Ensure technicians list is seeded
   if (!data.technicians || data.technicians.length === 0) {
-    const TECH_SEED_FILE = path.join(DATA_DIR, 'technicians.json');
-    if (fs.existsSync(TECH_SEED_FILE)) {
-      try {
-        const seedRaw = fs.readFileSync(TECH_SEED_FILE, 'utf8').replace(/^\uFEFF/, '').trim();
-        const seed = JSON.parse(seedRaw);
-        data.technicians = seed.technicians || [];
-      } catch (e) {}
-    }
-    if (!data.technicians || data.technicians.length === 0) {
-      data.technicians = [
-        { id: '56877', name: 'นาย มี', role: 'technician', active: true },
-        { id: '57145', name: 'นาย พิวพิว', role: 'technician', active: true },
-        { id: '52B13', name: 'นาย กิตติพงษ์ ศรีโยธา', role: 'technician', active: true },
-        { id: '51061', name: 'นาย อาทิตย์ บ้วนนอก', role: 'technician', active: true },
-        { id: '61B47', name: 'นาย ศิวกร วงค์ครองศักดิ์', role: 'technician', active: true }
-      ];
-    }
+    data.technicians = [
+      { id: '56877', name: 'นาย มี', role: 'technician', active: true },
+      { id: '57145', name: 'นาย พิวพิว', role: 'technician', active: true },
+      { id: '52B13', name: 'นาย กิตติพงษ์ ศรีโยธา', role: 'technician', active: true },
+      { id: '51061', name: 'นาย อาทิตย์ บ้วนนอก', role: 'technician', active: true },
+      { id: '61B47', name: 'นาย ศิวกร วงค์ครองศักดิ์', role: 'technician', active: true }
+    ];
     saveDB(data);
   }
 
@@ -116,10 +117,51 @@ function loadDB() {
 }
 
 function saveDB(data) {
-  fs.writeFileSync(DB_FILE, JSON.stringify(data, null, 2), 'utf8');
+  writeJsonSafe(DB_FILE, data);
 }
 
 const db = loadDB();
+
+function getSkillsDb() {
+  const existing = readJsonSafe(SKILLS_FILE, null);
+  if (existing) return existing;
+  try {
+    return buildSkillsDb();
+  } catch (e) {
+    return { title: 'สกิล', technicians: [] };
+  }
+}
+
+function getJobsDb() {
+  const existing = readJsonSafe(JOP_FILE, null);
+  if (existing) return existing;
+  try {
+    return buildJopDb();
+  } catch (e) {
+    return { title: 'Jop', byTechnician: {}, allJobs: [], unmatchedPendingAdmin: { count: 0, jobs: [] } };
+  }
+}
+
+function extractDocno(notif) {
+  if (!notif) return null;
+  if (notif.metadata && notif.metadata.docno) return String(notif.metadata.docno).toUpperCase();
+  const match = (notif.title || '').match(/\b(IF\d+)\b/i);
+  return match ? match[1].toUpperCase() : null;
+}
+
+function removeUploadFileIfUnused(imageUrl) {
+  if (!imageUrl || !String(imageUrl).startsWith('/uploads/')) return;
+  const stillUsed = (db.notifications || []).some(n => n.image === imageUrl);
+  if (stillUsed) return;
+
+  const fileName = path.basename(imageUrl);
+  const fullPath = path.join(UPLOAD_DIR, fileName);
+  try {
+    if (fs.existsSync(fullPath)) {
+      fs.unlinkSync(fullPath);
+    }
+  } catch (e) {}
+}
 
 // Configure Web Push with VAPID keys
 webpush.setVapidDetails(
@@ -138,7 +180,6 @@ function broadcastSSE(event, payload) {
   }
 }
 
-// Get Local Network IP addresses so mobile devices on same Wi-Fi can connect
 function getLocalIPs() {
   const interfaces = os.networkInterfaces();
   const ips = [];
@@ -153,17 +194,35 @@ function getLocalIPs() {
 }
 
 // ==========================================
-// 0. HEALTH CHECK & ADMIN LOGIN ENDPOINTS
+// 1. SECURITY, RATE LIMITING & AUTHENTICATION
 // ==========================================
-app.get('/api/health', (req, res) => {
-  res.status(200).json({ status: 'ok', uptime: process.uptime(), timestamp: new Date().toISOString() });
-});
+const loginAttempts = new Map();
+const activeAdminSessions = new Set();
+const SERVER_SECRET = crypto.createHash('sha256').update(process.env.ADMIN_PASSWORD || 'ADDA_SERVICE_MASTER_SECRET_2026').digest('hex');
 
-// ==========================================
-// SECURITY: ANTI-BRUTE FORCE & RATE LIMITING
-// ==========================================
-const loginAttempts = new Map(); // ip -> { count: number, lockedUntil: number, firstAttempt: number }
-const activeAdminSessions = new Set(); // set of active admin session tokens
+function generateAdminToken() {
+  const nonce = Date.now().toString(36) + '_' + crypto.randomBytes(8).toString('hex');
+  const hmac = crypto.createHmac('sha256', SERVER_SECRET).update(nonce).digest('base64url');
+  return `adm_${nonce}_${hmac}`;
+}
+
+function isValidAdminToken(token) {
+  if (!token || typeof token !== 'string' || !token.startsWith('adm_')) return false;
+  if (activeAdminSessions.has(token)) return true;
+
+  const parts = token.slice(4).split('_');
+  if (parts.length === 3) {
+    const nonce = `${parts[0]}_${parts[1]}`;
+    const expected = crypto.createHmac('sha256', SERVER_SECRET).update(nonce).digest('base64url');
+    try {
+      if (crypto.timingSafeEqual(Buffer.from(parts[2]), Buffer.from(expected))) {
+        activeAdminSessions.add(token);
+        return true;
+      }
+    } catch (e) {}
+  }
+  return false;
+}
 
 function getClientIP(req) {
   const forwarded = req.headers['x-forwarded-for'];
@@ -201,38 +260,30 @@ function recordFailedAttempt(req) {
   }
 
   if (record.count >= 5) {
-    record.lockedUntil = now + 15 * 60 * 1000; // Block for 15 minutes
+    record.lockedUntil = now + 15 * 60 * 1000;
   }
 
   loginAttempts.set(ip, record);
 }
 
 function resetFailedAttempts(req) {
-  const ip = getClientIP(req);
-  loginAttempts.delete(ip);
+  loginAttempts.delete(getClientIP(req));
 }
 
 function isLocalOrInternal(req) {
-  // If x-forwarded-for is present, request came through external internet/proxy
-  if (req.headers['x-forwarded-for']) {
-    return false;
-  }
+  if (req.headers['x-forwarded-for']) return false;
   const ip = req.socket?.remoteAddress || '';
   return ip === '127.0.0.1' || ip === '::1' || ip === '::ffff:127.0.0.1' || ip === 'localhost';
 }
 
-function getValidAdminPasswords() {
+function getConfiguredAdminPasswords() {
   const validPasswords = new Set();
 
-  // 1. Environment variable (Render / Cloud production)
   if (process.env.ADMIN_PASSWORD && process.env.ADMIN_PASSWORD.trim()) {
     validPasswords.add(process.env.ADMIN_PASSWORD.trim());
   }
 
-  // 2. Read from Password directory (protected locally in .gitignore)
   const passDir = path.join(__dirname, 'Password');
-
-  // Custom admin password file if created
   const customAdminFile = path.join(passDir, 'admin_password.txt');
   if (fs.existsSync(customAdminFile)) {
     try {
@@ -241,57 +292,59 @@ function getValidAdminPasswords() {
     } catch (e) {}
   }
 
-  // General Password.txt (handles ANSI / Windows-874 / UTF-8)
   const mainPassFile = path.join(passDir, 'Password.txt');
   if (fs.existsSync(mainPassFile)) {
     try {
-      const buf = fs.readFileSync(mainPassFile);
-      const str = buf.toString('latin1');
+      const str = fs.readFileSync(mainPassFile).toString('latin1');
       const lines = str.split(/\r?\n/).map(l => l.trim()).filter(Boolean);
       for (const line of lines) {
         if (line.includes('=')) {
           const val = line.split('=')[1].trim();
           if (val) validPasswords.add(val);
-        } else if (!line.startsWith('..')) {
-          validPasswords.add(line);
         }
       }
     } catch (e) {}
   }
 
-  // Fallbacks
-  validPasswords.add('Thanasit2540');
-  validPasswords.add('Thanasit');
-
   return validPasswords;
 }
 
-function requireAdmin(req, res, next) {
-  // Allow local internal requests from machine daemon
-  if (isLocalOrInternal(req)) {
-    return next();
-  }
+function isValidAdminPassword(input) {
+  const candidate = String(input || '').trim();
+  if (!candidate) return false;
 
+  const configured = getConfiguredAdminPasswords();
+  if (configured.has(candidate)) return true;
+
+  const hash = crypto.createHash('sha256').update(candidate).digest('hex');
+  return FALLBACK_ADMIN_PASSWORD_HASHES.has(hash);
+}
+
+function extractAdminToken(req) {
   const authHeader = req.headers['authorization'] || '';
   const adminTokenHeader = req.headers['x-admin-token'] || '';
 
-  let token = '';
   if (authHeader.startsWith('Bearer adm_')) {
-    token = authHeader.slice(7).trim();
-  } else if (adminTokenHeader.startsWith('adm_')) {
-    token = adminTokenHeader.trim();
+    return authHeader.slice(7).trim();
   }
-
-  if (token && activeAdminSessions.has(token)) {
-    return next();
+  if (adminTokenHeader.startsWith('adm_')) {
+    return adminTokenHeader.trim();
   }
+  return '';
+}
 
-  // Fallback direct admin password header
+function isAdminRequest(req) {
+  if (isLocalOrInternal(req)) return true;
+  const token = extractAdminToken(req);
+  if (token && isValidAdminToken(token)) return true;
   const adminPass = req.headers['x-admin-password'];
-  if (adminPass && getValidAdminPasswords().has(String(adminPass).trim())) {
+  return Boolean(adminPass && isValidAdminPassword(adminPass));
+}
+
+function requireAdmin(req, res, next) {
+  if (isAdminRequest(req)) {
     return next();
   }
-
   return res.status(403).json({
     ok: false,
     status: 403,
@@ -299,16 +352,17 @@ function requireAdmin(req, res, next) {
   });
 }
 
+app.get('/api/health', (req, res) => {
+  res.status(200).json({ status: 'ok', uptime: process.uptime(), timestamp: new Date().toISOString() });
+});
+
 app.post('/api/admin/login', (req, res) => {
   if (!checkRateLimit(req, res)) return;
 
   const { password } = req.body || {};
-  const inputPass = String(password || '').trim();
-  const validPasswords = getValidAdminPasswords();
-
-  if (inputPass && validPasswords.has(inputPass)) {
+  if (isValidAdminPassword(password)) {
     resetFailedAttempts(req);
-    const adminToken = `adm_${crypto.randomBytes(24).toString('base64url')}`;
+    const adminToken = generateAdminToken();
     activeAdminSessions.add(adminToken);
     return res.json({ status: 200, isAdmin: true, adminToken });
   }
@@ -326,7 +380,7 @@ app.post('/api/admin/login', (req, res) => {
 });
 
 // ==========================================
-// 0.1 TECHNICIAN AUTHENTICATION & MANAGEMENT
+// 1.1 TECHNICIAN AUTHENTICATION & MANAGEMENT
 // ==========================================
 app.post('/api/auth/login', (req, res) => {
   if (!checkRateLimit(req, res)) return;
@@ -337,12 +391,11 @@ app.post('/api/auth/login', (req, res) => {
   }
 
   const rawInput = String(employeeId).trim();
-  const validAdminPasswords = getValidAdminPasswords();
 
-  // If input matches Admin Password, log in directly as Administrator!
-  if (validAdminPasswords.has(rawInput)) {
+  // Direct Admin Login if input matches Admin Password
+  if (isValidAdminPassword(rawInput)) {
     resetFailedAttempts(req);
-    const adminToken = `adm_${crypto.randomBytes(24).toString('base64url')}`;
+    const adminToken = generateAdminToken();
     activeAdminSessions.add(adminToken);
     return res.json({
       ok: true,
@@ -387,6 +440,11 @@ app.get('/api/auth/verify', (req, res) => {
   if (!id) return res.json({ ok: false, active: false });
 
   if (id === 'ADMIN') {
+    const token = extractAdminToken(req);
+    const validSession = Boolean(token && isValidAdminToken(token));
+    if (!validSession && !isLocalOrInternal(req)) {
+      return res.json({ ok: false, active: false, error: 'เซสชันแอดมินหมดอายุ กรุณาเข้าสู่ระบบใหม่' });
+    }
     return res.json({
       ok: true,
       active: true,
@@ -450,23 +508,8 @@ app.delete('/api/technicians/:id', requireAdmin, (req, res) => {
   res.status(404).json({ ok: false, error: 'ไม่พบรหัสพนักงานนี้' });
 });
 
-app.post('/api/technicians/sync', requireAdmin, (req, res) => {
-  const { technicians } = req.body || {};
-  if (Array.isArray(technicians) && technicians.length > 0) {
-    db.technicians = technicians.map(t => ({
-      id: String(t.id).trim(),
-      name: String(t.name).trim(),
-      role: 'technician',
-      active: t.active !== false
-    }));
-    saveDB(db);
-    return res.json({ ok: true, count: db.technicians.length });
-  }
-  res.status(400).json({ ok: false, error: 'Invalid technicians array' });
-});
-
 // ==========================================
-// 1. SSE REAL-TIME STREAM ENDPOINT
+// 2. SSE REAL-TIME STREAM & DASHBOARD INIT
 // ==========================================
 app.get('/api/stream', (req, res) => {
   res.setHeader('Content-Type', 'text/event-stream');
@@ -482,20 +525,15 @@ app.get('/api/stream', (req, res) => {
   });
 });
 
-// ==========================================
-// 2. INITIALIZATION & DASHBOARD DATA
-// ==========================================
 app.get('/api/init', (req, res) => {
   const localIPs = getLocalIPs();
-  const authHeader = req.headers['authorization'] || '';
-  const adminToken = authHeader.startsWith('Bearer adm_') ? authHeader.slice(7).trim() : '';
-  const isAdmin = isLocalOrInternal(req) || (adminToken && activeAdminSessions.has(adminToken));
+  const isAdmin = isAdminRequest(req);
 
   res.json({
     vapidPublicKey: db.vapidKeys.publicKey,
     channels: db.channels,
     technicians: (db.technicians || []).map(t => ({ id: t.id, name: t.name, active: t.active })),
-    tokens: isAdmin ? db.tokens : [], // Tokens only revealed to authenticated admins!
+    tokens: isAdmin ? db.tokens : [],
     notifications: db.notifications.slice(0, 100),
     subscriberCount: db.subscriptions.length,
     subscribers: isAdmin ? db.subscriptions.map(s => ({
@@ -506,6 +544,8 @@ app.get('/api/init', (req, res) => {
       role: s.role || 'anonymous',
       updatedAt: s.updatedAt
     })) : [],
+    jobsData: getJobsDb(),
+    skillsData: getSkillsDb(),
     serverInfo: {
       port: PORT,
       localIPs,
@@ -515,7 +555,76 @@ app.get('/api/init', (req, res) => {
 });
 
 // ==========================================
-// 3. WEB PUSH SUBSCRIPTION ENDPOINT
+// 2.1 SKILLS & JOBS (สกิล.json & Jop.json) API
+// ==========================================
+app.get('/api/skills', (req, res) => {
+  res.json({ ok: true, data: getSkillsDb() });
+});
+
+app.post('/api/skills/sync', (req, res) => {
+  try {
+    const payload = req.body;
+    if (payload && (payload.technicians || Array.isArray(payload))) {
+      const dataToSave = Array.isArray(payload)
+        ? { technicians: payload, updatedAt: new Date().toISOString() }
+        : payload;
+      writeJsonSafe(SKILLS_FILE, dataToSave);
+      broadcastSSE('skills_update', { count: (dataToSave.technicians || []).length, updatedAt: dataToSave.updatedAt });
+      return res.json({ ok: true, message: 'Skills database synchronized successfully' });
+    }
+    res.status(400).json({ ok: false, error: 'Invalid skills payload' });
+  } catch (err) {
+    res.status(500).json({ ok: false, error: err.message });
+  }
+});
+
+app.get('/api/jobs', (req, res) => {
+  const jobsDb = getJobsDb();
+  const techId = req.query.techId ? String(req.query.techId).trim() : null;
+
+  if (techId) {
+    const techData = jobsDb.byTechnician ? (jobsDb.byTechnician[techId] || null) : null;
+    return res.json({
+      ok: true,
+      techId,
+      technician: techData ? { id: techData.id, name: techData.name } : null,
+      jobs: techData ? techData.jobs : [],
+      count: techData ? techData.count : 0,
+      allJobsCount: (jobsDb.allJobs || []).length
+    });
+  }
+
+  if (isAdminRequest(req)) {
+    return res.json({
+      ok: true,
+      isAdmin: true,
+      summary: jobsDb.summary,
+      unmatchedPendingAdmin: jobsDb.unmatchedPendingAdmin,
+      byTechnician: jobsDb.byTechnician,
+      unassigned: jobsDb.unassigned,
+      allJobs: jobsDb.allJobs
+    });
+  }
+
+  res.json({ ok: true, data: jobsDb });
+});
+
+app.post('/api/jobs/sync', (req, res) => {
+  try {
+    const payload = req.body;
+    if (payload && (payload.byTechnician || payload.allJobs)) {
+      writeJsonSafe(JOP_FILE, payload);
+      broadcastSSE('jobs_update', { summary: payload.summary, updatedAt: payload.updatedAt });
+      return res.json({ ok: true, message: 'Jop database synchronized successfully', summary: payload.summary });
+    }
+    res.status(400).json({ ok: false, error: 'Invalid jobs payload' });
+  } catch (err) {
+    res.status(500).json({ ok: false, error: err.message });
+  }
+});
+
+// ==========================================
+// 3. WEB PUSH SUBSCRIPTION & DISPATCH
 // ==========================================
 app.post('/api/subscribe', (req, res) => {
   const { subscription, deviceName, channels, userId, userName, role } = req.body;
@@ -542,30 +651,20 @@ app.post('/api/subscribe', (req, res) => {
   }
 
   saveDB(db);
-  console.log(`[Push Subscribed] Device: ${subRecord.deviceName} | User: ${subRecord.userName || 'Unassigned'} (${subRecord.userId || '-'}) | Role: ${subRecord.role}`);
   res.json({ status: 200, message: 'Subscribed successfully', subscriberCount: db.subscriptions.length });
 });
 
-// Helper: Match technician assignee with subscription
 function matchAssigneeServer(assigneeStr, sub) {
-  // If no assignee specified on notification -> general broadcast to all devices
   if (!assigneeStr || !String(assigneeStr).trim()) return true;
-
-  // Admin devices always receive all dispatches
   if (sub.role === 'admin') return true;
 
-  // If this task is waiting for admin ("รอแอดมินมอบหมาย" / "แอดมิน"):
-  // Deliver to all admin devices AND unassigned/anonymous devices (so admin receives even if not logged in with PIN)
   const isPendingAdmin = String(assigneeStr).includes('แอดมิน') || String(assigneeStr).includes('admin');
   if (isPendingAdmin) {
-    if (sub.role === 'admin' || !sub.userId || sub.role === 'anonymous') return true;
-    return false; // exclude specific technicians
+    return sub.role === 'admin' || !sub.userId || sub.role === 'anonymous';
   }
 
   const uid = String(sub.userId || '').trim().toLowerCase();
   const uname = String(sub.userName || '').trim().toLowerCase();
-  
-  // Anonymous devices (not logged in as any technician) don't receive personal tasks
   if (!uid && !uname) return false;
 
   const parts = String(assigneeStr).split(/[,;\n]/).map(s => s.trim().toLowerCase());
@@ -583,12 +682,37 @@ function matchAssigneeServer(assigneeStr, sub) {
   return false;
 }
 
+async function dispatchWebPush(payloadObj, assignee, priority = 'normal') {
+  const pushPayload = JSON.stringify(payloadObj);
+  const targetSubscriptions = db.subscriptions.filter(sub => matchAssigneeServer(assignee, sub));
+  const invalidEndpoints = [];
+
+  await Promise.allSettled(
+    targetSubscriptions.map(async (sub) => {
+      try {
+        await webpush.sendNotification(sub.subscription, pushPayload, {
+          TTL: 86400,
+          urgency: priority === 'urgent' ? 'high' : 'normal'
+        });
+      } catch (err) {
+        if (err.statusCode === 404 || err.statusCode === 410) {
+          invalidEndpoints.push(sub.subscription.endpoint);
+        }
+      }
+    })
+  );
+
+  if (invalidEndpoints.length > 0) {
+    db.subscriptions = db.subscriptions.filter(s => !invalidEndpoints.includes(s.subscription.endpoint));
+    saveDB(db);
+  }
+}
+
 // ==========================================
 // 4. LINE NOTIFY COMPATIBLE ENDPOINT (/api/notify & /notify)
 // ==========================================
 async function handleNotify(req, res) {
   try {
-    // 1. Extract token from Authorization: Bearer <TOKEN> or headers/body/query
     let rawToken = null;
     const authHeader = req.headers['authorization'] || req.headers['Authorization'];
     if (authHeader && authHeader.toLowerCase().startsWith('bearer ')) {
@@ -608,7 +732,6 @@ async function handleNotify(req, res) {
       });
     }
 
-    // 2. Verify token
     const tokenObj = db.tokens.find(t => t.token === rawToken);
     if (!tokenObj) {
       return res.status(401).json({
@@ -617,7 +740,6 @@ async function handleNotify(req, res) {
       });
     }
 
-    // 3. Validate message
     const message = req.body.message;
     if (!message || String(message).trim() === '') {
       return res.status(400).json({
@@ -626,20 +748,25 @@ async function handleNotify(req, res) {
       });
     }
 
-    // 4. Find associated channel
     const channel = db.channels.find(c => c.id === tokenObj.channelId) || {
       id: 'ch_default',
       name: 'แจ้งเตือนทั่วไป',
       color: '#06C755'
     };
 
-    // 5. Handle image (uploaded file or URL)
     let imageUrl = req.body.imageFullsize || req.body.imageThumbnail || req.body.image || null;
     if (req.file) {
       imageUrl = `/uploads/${req.file.filename}`;
     }
 
-    // 6. Task / Priority metadata
+    if (String(message).trim() === 'temp_upload') {
+      return res.status(200).json({
+        status: 200,
+        message: 'Image uploaded',
+        notification: { id: 'temp_upload', image: imageUrl }
+      });
+    }
+
     const isTask = req.body.isTask === true || req.body.isTask === 'true' || Boolean(req.body.assignee) || channel.id === 'ch_tasks';
     const priority = ['low', 'normal', 'high', 'urgent'].includes(req.body.priority) ? req.body.priority : 'normal';
 
@@ -661,64 +788,54 @@ async function handleNotify(req, res) {
       createdAt: new Date().toISOString()
     };
 
-    // 7. Save to DB (keep latest 500 notifications)
-    db.notifications.unshift(notification);
-    if (db.notifications.length > 500) {
-      db.notifications = db.notifications.slice(0, 500);
+    // Deduplicate by factory ticket number (IF...)
+    const cleanDoc = extractDocno(notification);
+    if (cleanDoc) {
+      const oldMatches = db.notifications.filter(n => extractDocno(n) === cleanDoc);
+      if (oldMatches.length > 0) {
+        db.notifications = db.notifications.filter(n => !oldMatches.includes(n));
+        oldMatches.forEach(old => {
+          if (old.image && old.image !== notification.image) {
+            removeUploadFileIfUnused(old.image);
+          }
+          broadcastSSE('notification_deleted', { id: old.id });
+        });
+      }
     }
 
-    // Update token usage stats
+    db.notifications.unshift(notification);
+    if (db.notifications.length > 500) {
+      const removed = db.notifications.slice(500);
+      db.notifications = db.notifications.slice(0, 500);
+      removed.forEach(r => removeUploadFileIfUnused(r.image));
+    }
+
     tokenObj.lastUsedAt = notification.createdAt;
     tokenObj.usageCount = (tokenObj.usageCount || 0) + 1;
     saveDB(db);
 
-    // 8. Broadcast via SSE (Real-time to all open web/PWA clients)
     broadcastSSE('notification', notification);
 
-    // 9. Send Web Push Notification to subscribed background devices
-    const pushPayload = JSON.stringify({
-      id: notification.id,
-      title: notification.title,
-      body: notification.assignee
-        ? `[ผู้รับผิดชอบ: ${notification.assignee}] ${notification.message}`
-        : notification.message,
-      icon: '/icon-192.png',
-      badge: '/icon-192.png',
-      image: notification.image,
-      tag: notification.id,
-      priority: notification.priority,
-      url: notification.url || '/',
-      channelName: notification.channelName,
-      createdAt: notification.createdAt
-    });
-
-    // 9. Send Web Push Notification to target subscribed background devices
-    const targetSubscriptions = db.subscriptions.filter(sub => matchAssigneeServer(notification.assignee, sub));
-    console.log(`[Push Dispatch] Notification '${notification.title}' (Assignee: '${notification.assignee || 'ทุกคน'}') -> Targets: ${targetSubscriptions.length}/${db.subscriptions.length} devices`);
-
-    const invalidEndpoints = [];
-    await Promise.allSettled(
-      targetSubscriptions.map(async (sub) => {
-        try {
-          await webpush.sendNotification(sub.subscription, pushPayload, {
-            TTL: 86400,
-            urgency: notification.priority === 'urgent' ? 'high' : 'normal'
-          });
-        } catch (err) {
-          console.error(`[WebPush Error] Sub ID ${sub.id} (${sub.userName || sub.deviceName}):`, err.statusCode || err.message);
-          if (err.statusCode === 404 || err.statusCode === 410) {
-            invalidEndpoints.push(sub.subscription.endpoint);
-          }
-        }
-      })
+    await dispatchWebPush(
+      {
+        id: notification.id,
+        title: notification.title,
+        body: notification.assignee
+          ? `[ผู้รับผิดชอบ: ${notification.assignee}] ${notification.message}`
+          : notification.message,
+        icon: '/icon-192.png',
+        badge: '/icon-192.png',
+        image: notification.image,
+        tag: notification.id,
+        priority: notification.priority,
+        url: notification.url || '/',
+        channelName: notification.channelName,
+        createdAt: notification.createdAt
+      },
+      notification.assignee,
+      notification.priority
     );
 
-    if (invalidEndpoints.length > 0) {
-      db.subscriptions = db.subscriptions.filter(s => !invalidEndpoints.includes(s.subscription.endpoint));
-      saveDB(db);
-    }
-
-    // Return exact LINE Notify compatible status 200 JSON + notification details
     return res.status(200).json({
       status: 200,
       message: 'ok',
@@ -769,7 +886,6 @@ app.post('/api/tokens', requireAdmin, (req, res) => {
   if (!name || !name.trim()) {
     return res.status(400).json({ status: 400, message: 'กรุณาตั้งชื่อ Token' });
   }
-  // Generate human-friendly, secure LINE-Notify-like token
   const randomPart = crypto.randomBytes(18).toString('base64url');
   const newToken = {
     id: `tok_${Date.now()}`,
@@ -813,20 +929,25 @@ app.patch('/api/notifications/:id/status', (req, res) => {
 
 app.delete('/api/notifications/:id', requireAdmin, (req, res) => {
   const { id } = req.params;
+  const target = db.notifications.find(n => n.id === id);
   db.notifications = db.notifications.filter(n => n.id !== id);
+  if (target && target.image) {
+    removeUploadFileIfUnused(target.image);
+  }
   saveDB(db);
   broadcastSSE('notification_deleted', { id });
   res.json({ status: 200, message: 'Deleted' });
 });
 
 app.delete('/api/notifications', requireAdmin, (req, res) => {
+  const oldImages = db.notifications.map(n => n.image).filter(Boolean);
   db.notifications = [];
+  oldImages.forEach(img => removeUploadFileIfUnused(img));
   saveDB(db);
   broadcastSSE('notifications_cleared', {});
   res.json({ status: 200, message: 'Cleared all notifications' });
 });
 
-// View all registered push notification devices
 app.get('/api/subscribers', requireAdmin, (req, res) => {
   const subscribers = db.subscriptions.map(s => ({
     id: s.id,
@@ -839,7 +960,6 @@ app.get('/api/subscribers', requireAdmin, (req, res) => {
   res.json({ status: 200, subscribers, count: subscribers.length });
 });
 
-// Delete an old/stale subscription device
 app.delete('/api/subscribers/:id', requireAdmin, (req, res) => {
   const { id } = req.params;
   const initialLen = db.subscriptions.length;
@@ -851,18 +971,11 @@ app.delete('/api/subscribers/:id', requireAdmin, (req, res) => {
 });
 
 // ==========================================
-// 6. BOT MANAGEMENT & AUTO-ACCEPT CONTROL ENDPOINTS
+// 7. BOT MANAGEMENT & AUTO-ACCEPT CONTROL
 // ==========================================
-const BOT_CONFIG_FILE = path.join(DATA_DIR, 'bot_config.json');
-const BOT_STATE_FILE = path.join(DATA_DIR, 'bot_state.json');
-
 function getBotConfigData() {
-  if (fs.existsSync(BOT_CONFIG_FILE)) {
-    try {
-      const raw = fs.readFileSync(BOT_CONFIG_FILE, 'utf8').replace(/^\uFEFF/, '').trim();
-      return JSON.parse(raw);
-    } catch (e) {}
-  }
+  const fileCfg = readJsonSafe(BOT_CONFIG_FILE, null);
+  if (fileCfg) return fileCfg;
   return db.botConfig || {
     autoAccept: false,
     pollIntervalSec: 60,
@@ -878,21 +991,32 @@ function saveBotConfigData(cfg) {
   saveDB(db);
 }
 
+async function proxyPostToBotDaemon(endpointPath, res) {
+  try {
+    const r = await fetch(`${BOT_DAEMON_URL}${endpointPath}`, { method: 'POST' });
+    const data = await r.json();
+    return res.json(data);
+  } catch (e) {
+    return res.status(503).json({
+      status: 503,
+      message: 'ไม่สามารถติดต่อ Bot Daemon ในเครื่องได้ (โปรดตรวจสอบว่าเปิด Bot แล้วหรือไม่)'
+    });
+  }
+}
+
 app.get('/api/bot/config', requireAdmin, (req, res) => {
   res.json({ status: 200, config: getBotConfigData() });
 });
 
-// Bot configuration is restricted to PC only (BotControlCenter.exe)
 app.post('/api/bot/config', requireAdmin, (req, res) => {
   return res.status(403).json({ status: 403, message: 'การตั้งค่าบอทกำหนดให้ทำผ่านโปรแกรมบนเครื่อง PC เท่านั้น' });
 });
 
 app.get('/api/bot/status', async (req, res) => {
-  // 1. Try querying local daemon
   try {
     const controller = new AbortController();
     const timeout = setTimeout(() => controller.abort(), 1200);
-    const daemonRes = await fetch('http://127.0.0.1:3055/api/bot/status', {
+    const daemonRes = await fetch(`${BOT_DAEMON_URL}/api/bot/status`, {
       signal: controller.signal
     });
     clearTimeout(timeout);
@@ -902,17 +1026,7 @@ app.get('/api/bot/status', async (req, res) => {
     }
   } catch (e) {}
 
-  // 2. Fallback to cached state from file or db heartbeat
-  let cachedState = null;
-  if (fs.existsSync(BOT_STATE_FILE)) {
-    try {
-      const raw = fs.readFileSync(BOT_STATE_FILE, 'utf8').replace(/^\uFEFF/, '').trim();
-      cachedState = JSON.parse(raw);
-    } catch (e) {}
-  }
-  if (!cachedState && db.botHeartbeat) {
-    cachedState = db.botHeartbeat.state;
-  }
+  const cachedState = readJsonSafe(BOT_STATE_FILE, null) || (db.botHeartbeat && db.botHeartbeat.state);
 
   res.json({
     status: 200,
@@ -922,37 +1036,10 @@ app.get('/api/bot/status', async (req, res) => {
   });
 });
 
-app.post('/api/bot/check-now', requireAdmin, async (req, res) => {
-  try {
-    const r = await fetch('http://127.0.0.1:3055/api/bot/check-now', { method: 'POST' });
-    const data = await r.json();
-    return res.json(data);
-  } catch (e) {
-    return res.status(503).json({ status: 503, message: 'ไม่สามารถติดต่อ Bot Daemon ในเครื่องได้ (โปรดตรวจสอบว่าเปิด Bot แล้วหรือไม่)' });
-  }
-});
+app.post('/api/bot/check-now', requireAdmin, (req, res) => proxyPostToBotDaemon('/api/bot/check-now', res));
+app.post('/api/bot/sync-backlog', requireAdmin, (req, res) => proxyPostToBotDaemon('/api/bot/sync-backlog', res));
+app.post('/api/bot/unlock-user', requireAdmin, (req, res) => proxyPostToBotDaemon('/api/bot/unlock-user', res));
 
-app.post('/api/bot/sync-backlog', requireAdmin, async (req, res) => {
-  try {
-    const r = await fetch('http://127.0.0.1:3055/api/bot/sync-backlog', { method: 'POST' });
-    const data = await r.json();
-    return res.json(data);
-  } catch (e) {
-    return res.status(503).json({ status: 503, message: 'ไม่สามารถติดต่อ Bot Daemon ในเครื่องได้ (โปรดตรวจสอบว่าเปิด Bot แล้วหรือไม่)' });
-  }
-});
-
-app.post('/api/bot/unlock-user', requireAdmin, async (req, res) => {
-  try {
-    const r = await fetch('http://127.0.0.1:3055/api/bot/unlock-user', { method: 'POST' });
-    const data = await r.json();
-    return res.json(data);
-  } catch (e) {
-    return res.status(503).json({ status: 503, message: 'ไม่สามารถติดต่อ Bot Daemon ในเครื่องได้ (โปรดตรวจสอบว่าเปิด Bot แล้วหรือไม่)' });
-  }
-});
-
-// Heartbeat receiver for cloud-to-local sync
 app.post('/api/bot/heartbeat', (req, res) => {
   const { state: botState, config: botCfg } = req.body || {};
   db.botHeartbeat = {
@@ -973,7 +1060,6 @@ app.post('/api/bot/heartbeat', (req, res) => {
   });
 });
 
-// Acknowledge processed bot action from cloud queue
 app.post('/api/bot/action-ack', (req, res) => {
   const { actionId } = req.body || {};
   if (actionId && db.botPendingActions) {
@@ -983,7 +1069,6 @@ app.post('/api/bot/action-ack', (req, res) => {
   return res.json({ status: 200, ok: true });
 });
 
-// Manual Accept & Assign by Admin for unmatched / review tickets
 app.post('/api/admin/accept-and-assign', requireAdmin, async (req, res) => {
   const { notifId, docno, techId, techName, estimateDays, user } = req.body || {};
   if (!docno || !techId) {
@@ -998,7 +1083,7 @@ app.post('/api/admin/accept-and-assign', requireAdmin, async (req, res) => {
 
   // 1. Try local bot daemon first (port 3055)
   try {
-    const botRes = await fetch('http://127.0.0.1:3055/api/bot/accept', {
+    const botRes = await fetch(`${BOT_DAEMON_URL}/api/bot/accept`, {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify({ docno, techId, techName, estimateDays: estDays, user: factoryUser })
@@ -1007,39 +1092,33 @@ app.post('/api/admin/accept-and-assign', requireAdmin, async (req, res) => {
       acceptResult = await botRes.json();
       executedLocally = true;
     }
-  } catch (e) {
-    // bot daemon not running on port 3055
-  }
+  } catch (e) {}
 
-  // 2. If bot daemon didn't answer, check if SqlBridge.exe exists locally on this host
-  if (!executedLocally) {
-    const SQL_BRIDGE = path.join(__dirname, 'SqlBridge.exe');
-    if (fs.existsSync(SQL_BRIDGE)) {
-      try {
-        const { execFile } = require('child_process');
-        const output = await new Promise((resolve, reject) => {
-          execFile(SQL_BRIDGE, ['accept', docno, String(estDays), factoryUser, techId], { encoding: 'utf8', windowsHide: true }, (err, stdout) => {
-            if (err && !stdout) return reject(err);
-            resolve(stdout);
-          });
+  // 2. Fallback to SqlBridge.exe directly if available locally
+  if (!executedLocally && fs.existsSync(SQL_BRIDGE)) {
+    try {
+      const output = await new Promise((resolve, reject) => {
+        execFile(SQL_BRIDGE, ['accept', docno, String(estDays), factoryUser, techId], { encoding: 'utf8', windowsHide: true }, (err, stdout) => {
+          if (err && !stdout) return reject(err);
+          resolve(stdout);
         });
-        const clean = (output || '').trim().replace(/^\uFEFF/, '');
-        const parsed = JSON.parse(clean);
-        if (parsed.ok) {
-          acceptResult = parsed;
-          executedLocally = true;
-        }
-      } catch (err) {
-        console.error('SqlBridge direct accept error:', err.message);
+      });
+      const clean = (output || '').trim().replace(/^\uFEFF/, '');
+      const parsed = JSON.parse(clean);
+      if (parsed.ok) {
+        acceptResult = parsed;
+        executedLocally = true;
       }
+    } catch (err) {
+      console.error('SqlBridge direct accept error:', err.message);
     }
   }
 
-  // 3. If neither ran locally (e.g. server is on Render cloud), queue action for bot daemon to pick up via heartbeat
+  // 3. Queue action for bot daemon via heartbeat if running on Render Cloud
   if (!executedLocally) {
     if (!db.botPendingActions) db.botPendingActions = [];
     db.botPendingActions.push({
-      id: 'act_' + Date.now(),
+      id: `act_${Date.now()}`,
       type: 'accept_and_assign',
       docno,
       techId,
@@ -1052,16 +1131,11 @@ app.post('/api/admin/accept-and-assign', requireAdmin, async (req, res) => {
     saveDB(db);
   }
 
-  // 4. Update notification in-place in db.notifications
-  let targetNotif = null;
-  if (notifId) {
-    targetNotif = (db.notifications || []).find(n => n.id === notifId);
-  }
+  // 4. Update notification in-place & send push notification to assigned technician
+  let targetNotif = notifId ? (db.notifications || []).find(n => n.id === notifId) : null;
   if (!targetNotif && docno) {
-    targetNotif = (db.notifications || []).find(n =>
-      (n.metadata && n.metadata.docno === docno) ||
-      (n.title && n.title.includes(docno))
-    );
+    const upperDoc = String(docno).toUpperCase();
+    targetNotif = (db.notifications || []).find(n => extractDocno(n) === upperDoc);
   }
 
   if (targetNotif) {
@@ -1077,9 +1151,8 @@ app.post('/api/admin/accept-and-assign', requireAdmin, async (req, res) => {
     saveDB(db);
     broadcastSSE('status_updated', targetNotif);
 
-    // Send Web Push notification to target technician
-    try {
-      const pushPayload = JSON.stringify({
+    await dispatchWebPush(
+      {
         id: targetNotif.id,
         title: `⚡ [มอบหมายงาน] ${docno} - ${targetNotif.channelName || 'งานแจ้งซ่อม'}`,
         body: `[ช่าง: ${techName}] ${targetNotif.message}`,
@@ -1089,12 +1162,10 @@ app.post('/api/admin/accept-and-assign', requireAdmin, async (req, res) => {
         priority: 'high',
         url: '/',
         createdAt: targetNotif.updatedAt
-      });
-      const targets = db.subscriptions.filter(sub => matchAssigneeServer(techName, sub));
-      for (const sub of targets) {
-        webpush.sendNotification(sub.subscription, pushPayload, { TTL: 86400, urgency: 'high' }).catch(() => {});
-      }
-    } catch (e) {}
+      },
+      techName,
+      'high'
+    );
   }
 
   return res.json({
@@ -1108,26 +1179,26 @@ app.post('/api/admin/accept-and-assign', requireAdmin, async (req, res) => {
   });
 });
 
-// Dismiss unmatched ticket without accepting
 app.post('/api/admin/dismiss-unmatched', requireAdmin, async (req, res) => {
   const { notifId, docno } = req.body || {};
   if (!notifId && !docno) {
     return res.status(400).json({ status: 400, message: 'กรุณาระบุ notifId หรือ docno' });
   }
 
+  const upperDoc = docno ? String(docno).toUpperCase() : '';
   const idx = (db.notifications || []).findIndex(n =>
-    n.id === notifId || (docno && ((n.metadata && n.metadata.docno === docno) || (n.title && n.title.includes(docno))))
+    n.id === notifId || (upperDoc && extractDocno(n) === upperDoc)
   );
-  let deleted = null;
   if (idx >= 0) {
-    deleted = db.notifications.splice(idx, 1)[0];
+    const deleted = db.notifications.splice(idx, 1)[0];
+    if (deleted.image) removeUploadFileIfUnused(deleted.image);
     saveDB(db);
     broadcastSSE('notification_deleted', { id: deleted.id });
   }
 
   if (docno) {
     try {
-      await fetch('http://127.0.0.1:3055/api/bot/dismiss', {
+      await fetch(`${BOT_DAEMON_URL}/api/bot/dismiss`, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ docno })
@@ -1141,18 +1212,15 @@ app.post('/api/admin/dismiss-unmatched', requireAdmin, async (req, res) => {
 app.listen(PORT, '0.0.0.0', () => {
   const ips = getLocalIPs();
   console.log('====================================================');
-  console.log(`🚀 ADDA Service - ระบบแจ้งเตือน & แจกงาน เริ่มทำงานแล้ว!`);
+  console.log('🚀 ADDA Service - ระบบแจ้งเตือน & แจกงาน เริ่มทำงานแล้ว!');
   console.log(`👉 เปิดบนคอมพิวเตอร์: http://localhost:${PORT}`);
   ips.forEach(ip => {
     console.log(`📱 เปิดผ่านมือถือ (Wi-Fi เดียวกัน): http://${ip}:${PORT}`);
   });
   console.log('====================================================');
 
-  // Keep Render server awake (ping every 5 minutes so Free Tier never sleeps)
   const RENDER_URL = process.env.RENDER_EXTERNAL_URL || 'https://powerenergy-rfik.onrender.com';
   setInterval(() => {
-    fetch(`${RENDER_URL}/api/health`)
-      .then(r => console.log(`[Keep-Alive] Pinged ${RENDER_URL}/api/health -> ${r.status}`))
-      .catch(err => console.warn(`[Keep-Alive] Ping error:`, err.message));
+    fetch(`${RENDER_URL}/api/health`).catch(() => {});
   }, 5 * 60 * 1000);
 });
