@@ -616,6 +616,13 @@
       .scope-bar {
         grid-template-columns: repeat(4, 1fr);
       }
+      .scope-btn,
+      .scope-btn#backlogScopeBtnAll,
+      .scope-btn#backlogScopeBtnPendingElec,
+      .scope-btn#backlogScopeBtnPendingAir,
+      .scope-btn#backlogScopeBtnMine {
+        grid-column: auto !important;
+      }
     }
     .scope-btn {
       padding: 10px 8px;
@@ -2417,6 +2424,8 @@
       if (myBacklogScopeSpan) myBacklogScopeSpan.textContent = myBacklogCount;
       if (allBacklogScopeSpan) allBacklogScopeSpan.textContent = acceptedBacklog.length;
 
+      const myScopeBtn = document.getElementById('backlogScopeBtnMine');
+      const allScopeBtn = document.getElementById('backlogScopeBtnAll');
       const pendingAirBtn = document.getElementById('backlogScopeBtnPendingAir');
       const pendingAirScopeSpan = document.getElementById('pendingAirScopeCount');
       if (pendingAirBtn) {
@@ -2433,20 +2442,36 @@
         pendingElecBtn.classList.toggle('active', state.backlogTaskScope === 'pending_elec');
       }
 
-      if (pendingAirBtn && pendingElecBtn) {
-        if (canSeePendingAir && !canSeePendingElec) {
-          pendingAirBtn.style.gridColumn = '1 / -1';
-        } else if (!canSeePendingAir && canSeePendingElec) {
-          pendingElecBtn.style.gridColumn = '1 / -1';
-        } else {
-          pendingAirBtn.style.gridColumn = 'auto';
-          pendingElecBtn.style.gridColumn = 'auto';
+      if (state.isAdmin) {
+        // Admin does not need "งานรอมอบหมาย" anymore since technicians self-accept by category!
+        if (myScopeBtn) myScopeBtn.style.display = 'none';
+        if (state.backlogTaskScope === 'mine') {
+          state.backlogTaskScope = 'all';
+        }
+        if (allScopeBtn) allScopeBtn.style.gridColumn = '1 / -1';
+        if (pendingElecBtn) pendingElecBtn.style.gridColumn = 'auto';
+        if (pendingAirBtn) pendingAirBtn.style.gridColumn = 'auto';
+      } else {
+        if (myScopeBtn) {
+          myScopeBtn.style.display = 'inline-flex';
+          myScopeBtn.style.gridColumn = 'auto';
+        }
+        if (allScopeBtn) allScopeBtn.style.gridColumn = 'auto';
+        if (pendingAirBtn && pendingElecBtn) {
+          if (canSeePendingAir && !canSeePendingElec) {
+            pendingAirBtn.style.gridColumn = '1 / -1';
+          } else if (!canSeePendingAir && canSeePendingElec) {
+            pendingElecBtn.style.gridColumn = '1 / -1';
+          } else {
+            pendingAirBtn.style.gridColumn = 'auto';
+            pendingElecBtn.style.gridColumn = 'auto';
+          }
         }
       }
 
       const myScopeLabel = document.getElementById('myBacklogScopeLabel');
       if (myScopeLabel) {
-        myScopeLabel.textContent = state.isAdmin ? '⭐ งานรอมอบหมาย' : '⭐ งานของฉัน';
+        myScopeLabel.textContent = '⭐ งานของฉัน';
       }
 
       // Toggle active states on scope buttons

@@ -157,9 +157,9 @@ function buildJopDb(optionalBacklog = null, optionalPending = null) {
   }
 
   const config = readJsonSafe(BOT_CONFIG_FILE, {});
-  const unmatchedPending = (pending || []).filter(item => !isJobMatchedByRules(item, config));
-  const airPending = (pending || []).filter(item => isAirJob(item) && isJobMatchedByRules(item, config));
-  const elecPending = (pending || []).filter(item => !isAirJob(item) && isJobMatchedByRules(item, config));
+  const unmatchedPending = [];
+  const airPending = (pending || []).filter(item => isAirJob(item));
+  const elecPending = (pending || []).filter(item => !isAirJob(item));
 
   const pendingAirJobs = airPending.map(item => {
     return {
