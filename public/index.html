@@ -533,17 +533,22 @@
     .filter-chip {
       padding: 6px 14px;
       border-radius: 999px;
-      font-size: 0.83rem;
+      font-size: 0.82rem;
       border: 1px solid var(--border);
-      background: var(--bg-card);
+      background: rgba(255, 255, 255, 0.04);
       color: var(--text-muted);
       cursor: pointer;
+      transition: all 0.15s ease;
+      white-space: nowrap;
     }
-
-    .filter-chip.active {
-      background: var(--primary);
+    .filter-chip:hover {
+      background: rgba(255, 255, 255, 0.08);
       color: #fff;
-      border-color: var(--primary);
+    }
+    .filter-chip.active {
+      background: rgba(6, 199, 85, 0.18);
+      color: #4ade80;
+      border-color: rgba(6, 199, 85, 0.5);
       font-weight: 600;
     }
 
@@ -598,35 +603,68 @@
       animation: slideIn 0.3s ease-out;
     }
     .scope-bar {
-      display: flex;
-      background: rgba(255, 255, 255, 0.05);
-      padding: 5px;
+      display: grid;
+      grid-template-columns: repeat(2, 1fr);
+      background: rgba(255, 255, 255, 0.04);
+      padding: 6px;
       border-radius: 12px;
-      gap: 8px;
-      margin-bottom: 14px;
+      gap: 6px;
+      margin-bottom: 12px;
       border: 1px solid var(--border);
     }
+    @media (min-width: 640px) {
+      .scope-bar {
+        grid-template-columns: repeat(4, 1fr);
+      }
+    }
     .scope-btn {
-      flex: 1;
-      padding: 9px 14px;
-      border-radius: 9px;
+      padding: 10px 8px;
+      border-radius: 8px;
       border: 1px solid transparent;
-      background: transparent;
+      background: rgba(255, 255, 255, 0.02);
       color: var(--text-muted);
-      font-size: 0.9rem;
+      font-size: 0.84rem;
       font-weight: 500;
       cursor: pointer;
-      transition: all 0.15s;
+      transition: all 0.15s ease;
+      white-space: nowrap;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      gap: 4px;
+      text-overflow: ellipsis;
+      overflow: hidden;
+      width: 100%;
+      box-sizing: border-box;
     }
     .scope-btn:hover {
       background: rgba(255, 255, 255, 0.08);
       color: #fff;
     }
     .scope-btn.active {
-      background: var(--primary);
-      color: #fff;
-      font-weight: 600;
-      box-shadow: 0 2px 10px rgba(6, 199, 85, 0.35);
+      background: rgba(6, 199, 85, 0.18);
+      color: #4ade80;
+      font-weight: 700;
+      border-color: rgba(6, 199, 85, 0.5);
+      box-shadow: 0 2px 8px rgba(6, 199, 85, 0.2);
+    }
+    .scope-btn#backlogScopeBtnPendingElec.active {
+      background: rgba(245, 158, 11, 0.2);
+      color: #fde68a;
+      border-color: rgba(245, 158, 11, 0.6);
+      box-shadow: 0 2px 8px rgba(245, 158, 11, 0.2);
+    }
+    .scope-btn#backlogScopeBtnPendingAir.active {
+      background: rgba(6, 182, 212, 0.2);
+      color: #a5f3fc;
+      border-color: rgba(6, 182, 212, 0.6);
+      box-shadow: 0 2px 8px rgba(6, 182, 212, 0.2);
+    }
+    .scope-btn#backlogScopeBtnMine.active {
+      background: rgba(59, 130, 246, 0.2);
+      color: #93c5fd;
+      border-color: rgba(59, 130, 246, 0.6);
+      box-shadow: 0 2px 8px rgba(59, 130, 246, 0.2);
     }
 
   </style>
@@ -793,24 +831,21 @@
           <button class="scope-btn" id="backlogScopeBtnMine" onclick="setBacklogTaskScope('mine')">
             <span id="myBacklogScopeLabel">⭐ งานของฉัน</span> (<span id="myBacklogScopeCount">0</span>)
           </button>
-          <button class="scope-btn" id="backlogScopeBtnPendingElec" style="display: none; border-color: rgba(245, 158, 11, 0.4); color: #fbbf24;" onclick="setBacklogTaskScope('pending_elec')">
-            <span>📥 งานรอรับเรื่อง (ไฟฟ้า)</span> (<span id="pendingElecScopeCount">0</span>)
-          </button>
-          <button class="scope-btn" id="backlogScopeBtnPendingAir" style="display: none; border-color: rgba(6, 182, 212, 0.4); color: #67e8f9;" onclick="setBacklogTaskScope('pending_air')">
-            <span>📥 งานรอรับเรื่อง (แอร์)</span> (<span id="pendingAirScopeCount">0</span>)
-          </button>
           <button class="scope-btn active" id="backlogScopeBtnAll" onclick="setBacklogTaskScope('all')">
             🌐 งานทั้งหมด (<span id="allBacklogScopeCount">0</span>)
+          </button>
+          <button class="scope-btn" id="backlogScopeBtnPendingElec" style="display: none;" onclick="setBacklogTaskScope('pending_elec')">
+            <span>⚡ รอช่างไฟฟ้า</span> (<span id="pendingElecScopeCount">0</span>)
+          </button>
+          <button class="scope-btn" id="backlogScopeBtnPendingAir" style="display: none;" onclick="setBacklogTaskScope('pending_air')">
+            <span>❄️ รอช่างแอร์</span> (<span id="pendingAirScopeCount">0</span>)
           </button>
         </div>
         <div class="filter-bar" id="backlogTechFilterBar">
           <button class="filter-chip active" onclick="setBacklogTechFilter('all', this)">📋 ทั้งหมด</button>
-          <button class="filter-chip" onclick="setBacklogTechFilter('elec', this)">⚡ งานไฟฟ้า (<span id="elecCountSpan">0</span>)</button>
-          <button class="filter-chip" onclick="setBacklogTechFilter('air', this)">❄️ งานแอร์ (<span id="airCountSpan">0</span>)</button>
-          <button class="filter-chip" id="filterChipPendingElec" onclick="setBacklogTechFilter('pending_elec', this)" style="display: none; border-color: rgba(245, 158, 11, 0.4); color: #fbbf24;">⚡ รอช่างไฟฟ้า (<span id="pendingElecFilterSpan">0</span>)</button>
-          <button class="filter-chip" id="filterChipPendingAir" onclick="setBacklogTechFilter('pending_air', this)" style="display: none; border-color: rgba(6, 182, 212, 0.4); color: #67e8f9;">❄️ รอช่างแอร์ (<span id="pendingAirFilterSpan">0</span>)</button>
-          <button class="filter-chip admin-only" onclick="setBacklogTechFilter('pending_admin', this)" style="display: none; border-color: rgba(245, 158, 11, 0.4); color: #fbbf24;">⚠️ รอมอบหมาย (<span id="pendingAdminCountSpan">0</span>)</button>
-          <button class="filter-chip" onclick="setBacklogTechFilter('overdue', this)">🔴 เฉพาะงานเกินกำหนด</button>
+          <button class="filter-chip" onclick="setBacklogTechFilter('elec', this)">⚡ ไฟฟ้า (<span id="elecCountSpan">0</span>)</button>
+          <button class="filter-chip" onclick="setBacklogTechFilter('air', this)">❄️ แอร์ (<span id="airCountSpan">0</span>)</button>
+          <button class="filter-chip" onclick="setBacklogTechFilter('overdue', this)">🔴 เกินกำหนด</button>
         </div>
         <div id="backlogList" class="notif-list"></div>
       </div>
@@ -2398,18 +2433,15 @@
         pendingElecBtn.classList.toggle('active', state.backlogTaskScope === 'pending_elec');
       }
 
-      const filterChipAir = document.getElementById('filterChipPendingAir');
-      const pendingAirFilterSpan = document.getElementById('pendingAirFilterSpan');
-      if (filterChipAir) {
-        filterChipAir.style.display = canSeePendingAir ? 'inline-block' : 'none';
-        if (pendingAirFilterSpan) pendingAirFilterSpan.textContent = pendingAirTotal.length;
-      }
-
-      const filterChipElec = document.getElementById('filterChipPendingElec');
-      const pendingElecFilterSpan = document.getElementById('pendingElecFilterSpan');
-      if (filterChipElec) {
-        filterChipElec.style.display = canSeePendingElec ? 'inline-block' : 'none';
-        if (pendingElecFilterSpan) pendingElecFilterSpan.textContent = pendingElecTotal.length;
+      if (pendingAirBtn && pendingElecBtn) {
+        if (canSeePendingAir && !canSeePendingElec) {
+          pendingAirBtn.style.gridColumn = '1 / -1';
+        } else if (!canSeePendingAir && canSeePendingElec) {
+          pendingElecBtn.style.gridColumn = '1 / -1';
+        } else {
+          pendingAirBtn.style.gridColumn = 'auto';
+          pendingElecBtn.style.gridColumn = 'auto';
+        }
       }
 
       const myScopeLabel = document.getElementById('myBacklogScopeLabel');
