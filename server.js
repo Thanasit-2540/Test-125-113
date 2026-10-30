@@ -178,6 +178,12 @@ function enrichJobsWithImages(jobsDb) {
       jobs: enriched.unmatchedPendingAdmin.jobs.map(enrichJob)
     };
   }
+  if (enriched.pendingAir && Array.isArray(enriched.pendingAir.jobs)) {
+    enriched.pendingAir = {
+      ...enriched.pendingAir,
+      jobs: enriched.pendingAir.jobs.map(enrichJob)
+    };
+  }
   return enriched;
 }
 
@@ -1134,11 +1140,22 @@ app.post('/api/bot/action-ack', (req, res) => {
   return res.json({ status: 200, ok: true });
 });
 
-app.post('/api/admin/accept-and-assign', requireAdmin, async (req, res) => {
-  const { notifId, docno, techId, techName, estimateDays, user } = req.body || {};
-  if (!docno || !techId) {
-    return res.status(400).json({ status: 400, message: 'กรุณาระบุ docno และ techId' });
+async function executeJobAccept({ notifId, docno, techIds, techId, techName, estimateDays, user }) {
+  const targetDocno = docno ? String(docno).toUpperCase() : '';
+  const techIdsArr = Array.isArray(techIds) && techIds.length > 0
+    ? techIds.map(t => String(t).trim()).filter(Boolean)
+    : (techId ? String(techId).split(',').map(t => t.trim()).filter(Boolean) : []);
+
+  if (!targetDocno || techIdsArr.length === 0) {
+    throw new Error('กรุณาระบุ docno และเลือกช่างผู้รับผิดชอบอย่างน้อย 1 คน');
   }
+
+  const skillsData = getSkillsDb();
+  const techIdsComma = techIdsArr.join(',');
+  const finalTechName = techName || (skillsData.technicians || [])
+    .filter(t => techIdsArr.includes(t.id))
+    .map(t => t.name)
+    .join(', ') || techIdsComma;
 
   const factoryUser = user || (getBotConfigData() ? getBotConfigData().factoryUser : 'THANASIT') || 'THANASIT';
   const estDays = Math.max(1, parseInt(estimateDays, 10) || 7);
@@ -1151,7 +1168,7 @@ app.post('/api/admin/accept-and-assign', requireAdmin, async (req, res) => {
     const botRes = await fetch(`${BOT_DAEMON_URL}/api/bot/accept`, {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ docno, techId, techName, estimateDays: estDays, user: factoryUser })
+      body: JSON.stringify({ docno: targetDocno, techIds: techIdsArr, techName: finalTechName, estimateDays: estDays, user: factoryUser })
     });
     if (botRes.ok) {
       acceptResult = await botRes.json();
@@ -1159,11 +1176,11 @@ app.post('/api/admin/accept-and-assign', requireAdmin, async (req, res) => {
     }
   } catch (e) {}
 
-  // 2. Fallback to SqlBridge.exe directly if available locally
+  // 2. Direct SqlBridge.exe if available locally
   if (!executedLocally && fs.existsSync(SQL_BRIDGE)) {
     try {
       const output = await new Promise((resolve, reject) => {
-        execFile(SQL_BRIDGE, ['accept', docno, String(estDays), factoryUser, techId], { encoding: 'utf8', windowsHide: true }, (err, stdout) => {
+        execFile(SQL_BRIDGE, ['accept', targetDocno, String(estDays), factoryUser, techIdsComma], { encoding: 'utf8', windowsHide: true }, (err, stdout) => {
           if (err && !stdout) return reject(err);
           resolve(stdout);
         });
@@ -1185,9 +1202,10 @@ app.post('/api/admin/accept-and-assign', requireAdmin, async (req, res) => {
     db.botPendingActions.push({
       id: `act_${Date.now()}`,
       type: 'accept_and_assign',
-      docno,
-      techId,
-      techName,
+      docno: targetDocno,
+      techIds: techIdsArr,
+      techId: techIdsComma,
+      techName: finalTechName,
       estimateDays: estDays,
       user: factoryUser,
       notifId,
@@ -1196,86 +1214,149 @@ app.post('/api/admin/accept-and-assign', requireAdmin, async (req, res) => {
     saveDB(db);
   }
 
-  // 4. Update notification in-place & send push notification to assigned technician
+  // 4. Update notification in-place
   let targetNotif = notifId ? (db.notifications || []).find(n => n.id === notifId) : null;
-  if (!targetNotif && docno) {
-    const upperDoc = String(docno).toUpperCase();
-    targetNotif = (db.notifications || []).find(n => extractDocno(n) === upperDoc);
+  if (!targetNotif && targetDocno) {
+    targetNotif = (db.notifications || []).find(n => extractDocno(n) === targetDocno);
   }
 
+  const estDateStr = new Date(Date.now() + estDays * 86400000).toLocaleDateString('th-TH');
   if (targetNotif) {
     targetNotif.taskStatus = 'in_progress';
-    targetNotif.assignee = techName;
-    targetNotif.title = targetNotif.title.replace('⚠️ [รอแอดมินพิจารณา]', '⚡ [แอดมินมอบหมาย]');
+    targetNotif.assignee = finalTechName;
+    targetNotif.title = (targetNotif.title || '')
+      .replace(/\[รอแอดมินพิจารณา\]|\[รอช่างแอร์รับเรื่อง\]/g, '')
+      .replace(/\s+/g, ' ')
+      .trim();
+    if (!targetNotif.title.includes('กำหนดเสร็จ')) {
+      targetNotif.title = `${targetNotif.title} 🟡 [กำหนดเสร็จ ${estDateStr}]`;
+    }
     targetNotif.priority = 'high';
     targetNotif.updatedAt = new Date().toISOString();
     if (!targetNotif.metadata) targetNotif.metadata = {};
-    targetNotif.metadata.assignedTechId = techId;
-    targetNotif.metadata.assignedTechName = techName;
+    targetNotif.metadata.assignedTechIds = techIdsArr;
+    targetNotif.metadata.assignedTechName = finalTechName;
     targetNotif.metadata.estimateDays = estDays;
     saveDB(db);
     broadcastSSE('status_updated', targetNotif);
+  }
 
-    // Update Jop database so unmatched count updates immediately
-    try {
-      const jop = readJsonSafe(JOP_FILE, null);
-      if (jop) {
-        if (jop.unmatchedPendingAdmin && Array.isArray(jop.unmatchedPendingAdmin.jobs)) {
-          const found = jop.unmatchedPendingAdmin.jobs.find(j => j.docno === docno);
-          jop.unmatchedPendingAdmin.jobs = jop.unmatchedPendingAdmin.jobs.filter(j => j.docno !== docno);
-          jop.unmatchedPendingAdmin.count = jop.unmatchedPendingAdmin.jobs.length;
-          if (jop.summary) {
-            jop.summary.pendingAdminCount = jop.unmatchedPendingAdmin.count;
-          }
-
-          if (found) {
-            found.techs = techName;
-            found.status = 'in_progress';
-            found.statusBadge = '🟡 [กำลังดำเนินการ]';
-            if (!jop.allJobs) jop.allJobs = [];
-            jop.allJobs.unshift(found);
-            if (jop.summary) jop.summary.totalAccepted = jop.allJobs.length;
-
-            if (techId && jop.byTechnician && jop.byTechnician[techId]) {
-              if (!jop.byTechnician[techId].jobs) jop.byTechnician[techId].jobs = [];
-              jop.byTechnician[techId].jobs.unshift(found);
-              jop.byTechnician[techId].count = jop.byTechnician[techId].jobs.length;
-            }
-          }
-        }
-        writeJsonSafe(JOP_FILE, jop);
-        broadcastSSE('jobs_update', { ok: true, data: jop });
+  // 5. Update Jop.json locally
+  try {
+    const jop = readJsonSafe(JOP_FILE, null);
+    if (jop) {
+      let acceptedItem = null;
+      if (jop.pendingAir && Array.isArray(jop.pendingAir.jobs)) {
+        acceptedItem = jop.pendingAir.jobs.find(j => (j.docno || '').toUpperCase() === targetDocno);
+        jop.pendingAir.jobs = jop.pendingAir.jobs.filter(j => (j.docno || '').toUpperCase() !== targetDocno);
+        jop.pendingAir.count = jop.pendingAir.jobs.length;
       }
-    } catch (jopErr) {
-      console.warn('Error updating Jop.json in accept-and-assign:', jopErr.message);
-    }
+      if (jop.unmatchedPendingAdmin && Array.isArray(jop.unmatchedPendingAdmin.jobs)) {
+        if (!acceptedItem) {
+          acceptedItem = jop.unmatchedPendingAdmin.jobs.find(j => (j.docno || '').toUpperCase() !== targetDocno);
+        }
+        jop.unmatchedPendingAdmin.jobs = jop.unmatchedPendingAdmin.jobs.filter(j => (j.docno || '').toUpperCase() !== targetDocno);
+        jop.unmatchedPendingAdmin.count = jop.unmatchedPendingAdmin.jobs.length;
+      }
+      if (jop.summary) {
+        if (jop.pendingAir) jop.summary.pendingAirCount = jop.pendingAir.count;
+        if (jop.unmatchedPendingAdmin) jop.summary.pendingAdminCount = jop.unmatchedPendingAdmin.count;
+      }
 
+      if (acceptedItem) {
+        acceptedItem.techs = finalTechName;
+        acceptedItem.status = 'in_progress';
+        acceptedItem.taskStatus = 'in_progress';
+        acceptedItem.statusBadge = `🟡 [กำหนดเสร็จ ${estDateStr}]`;
+        if (!jop.allJobs) jop.allJobs = [];
+        jop.allJobs.unshift(acceptedItem);
+        if (jop.summary) jop.summary.totalAccepted = jop.allJobs.length;
+
+        // Assign to each selected technician's personal list
+        techIdsArr.forEach(tid => {
+          if (jop.byTechnician && jop.byTechnician[tid]) {
+            if (!jop.byTechnician[tid].jobs) jop.byTechnician[tid].jobs = [];
+            jop.byTechnician[tid].jobs.unshift(acceptedItem);
+            jop.byTechnician[tid].count = jop.byTechnician[tid].jobs.length;
+          }
+        });
+      }
+
+      writeJsonSafe(JOP_FILE, jop);
+      broadcastSSE('jobs_update', { ok: true, data: jop });
+    }
+  } catch (jopErr) {
+    console.warn('Error updating Jop.json in executeJobAccept:', jopErr.message);
+  }
+
+  // 6. Send push notification to assigned technicians
+  if (targetNotif) {
     await dispatchWebPush(
       {
         id: targetNotif.id,
-        title: `⚡ [มอบหมายงาน] ${docno} - ${targetNotif.channelName || 'งานแจ้งซ่อม'}`,
-        body: `[ช่าง: ${techName}] ${targetNotif.message}`,
+        title: `⚡ [เริ่มงาน] ${targetDocno} (เสร็จใน ${estDays} วัน)`,
+        body: `ผู้รับผิดชอบ: ${finalTechName}\n${targetNotif.message}`,
         icon: '/icon-192.png',
         badge: '/icon-192.png',
         tag: targetNotif.id,
         priority: 'high',
         url: '/',
-        createdAt: targetNotif.updatedAt
+        createdAt: new Date().toISOString()
       },
-      techName,
+      finalTechName,
       'high'
     );
   }
 
-  return res.json({
+  return {
     status: 200,
     ok: true,
     executedLocally,
     message: executedLocally
-      ? `รับเรื่อง ${docno} ในระบบโรงงานและมอบหมายให้ ${techName} เรียบร้อยแล้ว`
-      : `ส่งคำสั่งรับเรื่อง ${docno} ให้ ${techName} ไปยังบอทโรงงานเรียบร้อยแล้ว`,
+      ? `รับเรื่อง ${targetDocno} ในระบบโรงงานและมอบหมายให้ ${finalTechName} เรียบร้อยแล้ว`
+      : `ส่งคำสั่งรับเรื่อง ${targetDocno} ให้ ${finalTechName} ไปยังบอทโรงงานเรียบร้อยแล้ว`,
     job: acceptResult?.job || null
-  });
+  };
+}
+
+app.post('/api/admin/accept-and-assign', requireAdmin, async (req, res) => {
+  try {
+    const result = await executeJobAccept(req.body);
+    return res.json(result);
+  } catch (err) {
+    return res.status(400).json({ ok: false, status: 400, message: err.message });
+  }
+});
+
+app.post('/api/jobs/accept', async (req, res) => {
+  try {
+    const isAdmin = isAdminRequest(req);
+    const callerUserId = (req.headers['x-user-id'] || req.body.callerUserId || '').toString().trim();
+    const skillsData = getSkillsDb();
+    const callerTech = (skillsData.technicians || []).find(t => t.id === callerUserId);
+
+    if (!isAdmin) {
+      if (!callerTech) {
+        return res.status(403).json({ ok: false, error: 'ไม่พบข้อมูลช่าง หรือไม่ได้รับอนุญาตให้ทำรายการ' });
+      }
+      const category = req.body.category || '';
+      const isAir = (category === 'air') || String(req.body.docno || '').includes('AIR');
+      if (isAir && !callerTech.canAcceptAir) {
+        return res.status(403).json({ ok: false, error: 'คุณไม่มีสิทธิ์ในการรับงานแอร์ (สิทธิ์ถูกควบคุมจากคอมพิวเตอร์หลัก)' });
+      }
+      if (!isAir && !callerTech.canAcceptElec) {
+        return res.status(403).json({ ok: false, error: 'คุณไม่มีสิทธิ์ในการรับงานไฟฟ้านี้' });
+      }
+    }
+
+    const result = await executeJobAccept({
+      ...req.body,
+      user: callerTech?.name || req.body.user
+    });
+    return res.json(result);
+  } catch (err) {
+    return res.status(400).json({ ok: false, error: err.message });
+  }
 });
 
 app.post('/api/admin/dismiss-unmatched', requireAdmin, async (req, res) => {

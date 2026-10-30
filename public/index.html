@@ -793,6 +793,9 @@
           <button class="scope-btn" id="backlogScopeBtnMine" onclick="setBacklogTaskScope('mine')">
             <span id="myBacklogScopeLabel">⭐ งานของฉัน</span> (<span id="myBacklogScopeCount">0</span>)
           </button>
+          <button class="scope-btn" id="backlogScopeBtnPendingAir" style="display: none; border-color: rgba(6, 182, 212, 0.4); color: #67e8f9;" onclick="setBacklogTaskScope('pending_air')">
+            <span>📥 งานรอรับเรื่อง (แอร์)</span> (<span id="pendingAirScopeCount">0</span>)
+          </button>
           <button class="scope-btn active" id="backlogScopeBtnAll" onclick="setBacklogTaskScope('all')">
             🌐 งานทั้งหมด (<span id="allBacklogScopeCount">0</span>)
           </button>
@@ -801,6 +804,7 @@
           <button class="filter-chip active" onclick="setBacklogTechFilter('all', this)">📋 ทั้งหมด</button>
           <button class="filter-chip" onclick="setBacklogTechFilter('elec', this)">⚡ งานไฟฟ้า (<span id="elecCountSpan">0</span>)</button>
           <button class="filter-chip" onclick="setBacklogTechFilter('air', this)">❄️ งานแอร์ (<span id="airCountSpan">0</span>)</button>
+          <button class="filter-chip" id="filterChipPendingAir" onclick="setBacklogTechFilter('pending_air', this)" style="display: none; border-color: rgba(6, 182, 212, 0.4); color: #67e8f9;">📥 รอช่างแอร์ (<span id="pendingAirFilterSpan">0</span>)</button>
           <button class="filter-chip admin-only" onclick="setBacklogTechFilter('pending_admin', this)" style="display: none; border-color: rgba(245, 158, 11, 0.4); color: #fbbf24;">⚠️ รอมอบหมาย (<span id="pendingAdminCountSpan">0</span>)</button>
           <button class="filter-chip" onclick="setBacklogTechFilter('overdue', this)">🔴 เฉพาะงานเกินกำหนด</button>
         </div>
@@ -1311,6 +1315,7 @@
     function setBacklogTaskScope(scope) {
       state.backlogTaskScope = scope;
       document.getElementById('backlogScopeBtnMine')?.classList.toggle('active', scope === 'mine');
+      document.getElementById('backlogScopeBtnPendingAir')?.classList.toggle('active', scope === 'pending_air');
       document.getElementById('backlogScopeBtnAll')?.classList.toggle('active', scope === 'all');
       renderBacklogView();
     }
@@ -1901,9 +1906,19 @@
         return n;
       }
       const isAir = n.jobType === '3' || (n.category || '').includes('แอร์');
+      const isPendingAir = n.taskStatus === 'pending_air' || (n.title || '').includes('รอช่างแอร์รับเรื่อง') || Boolean(n.isPendingAir);
+      const isPendingAdmin = n.taskStatus === 'pending_admin' || (n.title || '').includes('รอแอดมินพิจารณา');
       const typeBadge = isAir ? '❄️ [แอร์]' : '⚡ [ไฟฟ้า]';
       const isOverdue = Boolean(n.isOverdue || n.priority === 'urgent');
-      const statusBadge = n.statusBadge || (isOverdue ? `🔴 [เกินกำหนด ${n.estDate || ''}]` : `🟡 [กำหนดเสร็จ ${n.estDate || ''}]`);
+
+      let statusBadge = n.statusBadge;
+      if (!statusBadge) {
+        if (isPendingAir) statusBadge = '⏳ [รอช่างแอร์รับเรื่อง]';
+        else if (isPendingAdmin) statusBadge = '⚠️ [รอแอดมินพิจารณา]';
+        else if (isOverdue) statusBadge = `🔴 [เกินกำหนด ${n.estDate || ''}]`;
+        else statusBadge = `🟡 [กำหนดเสร็จ ${n.estDate || ''}]`;
+      }
+
       const locStr = n.location ? ` (${n.location})` : '';
       const timeShort = (n.time1 || '').slice(0, 5);
 
@@ -1925,15 +1940,16 @@
         title: `${typeBadge} ${n.docno} ${statusBadge} ${n.deptName || ''}${locStr}`,
         message: [
           `🔧 อาการที่เสีย: ${n.symptom || '-'}`,
-          `📅 วันที่แจ้ง: ${n.date1 || '-'} ${timeShort} น. | วันที่รับเรื่อง: ${n.recvDate || '-'}`,
-          `⏳ ประมาณงานเสร็จ: ${n.estDate || '-'} | ผู้รับเรื่อง: ${n.receiver || '-'}`,
+          `📅 วันที่แจ้ง: ${n.date1 || '-'} ${timeShort} น. | วันที่รับเรื่อง: ${n.recvDate || (isPendingAir ? 'รอช่างแอร์รับเรื่อง' : '-')}`,
+          `⏳ ประมาณงานเสร็จ: ${n.estDate || (isPendingAir ? 'รอระบุวันเสร็จ' : '-')} | ผู้รับเรื่อง: ${n.receiver || '-'}`,
           `👤 ผู้แจ้งซ่อม: ${n.requester || '-'}`
         ].join('\n'),
-        assignee: n.assignee || n.techs || 'ยังไม่ระบุช่าง',
-        priority: n.priority || (isOverdue ? 'urgent' : 'high'),
-        taskStatus: n.taskStatus || n.status || 'in_progress',
+        assignee: n.assignee || n.techs || (isPendingAir ? 'รอช่างแอร์ระบุช่าง' : 'ยังไม่ระบุช่าง'),
+        priority: isPendingAir ? 'high' : (n.priority || (isOverdue ? 'urgent' : 'high')),
+        taskStatus: n.taskStatus || n.status || (isPendingAir ? 'pending_air' : 'in_progress'),
         channelName: isAir ? '❄️ งานค้างซ่อม: แอร์' : '⚡ งานค้างซ่อม: ไฟฟ้า',
         image: resolvedImage,
+        isPendingAir,
         metadata: {
           docno: n.docno,
           jobType: n.jobType,
@@ -1951,17 +1967,21 @@
       // Check if structured Jop database is loaded
       let acceptedBacklog = [];
       let pendingAdminTotal = [];
+      let pendingAirTotal = [];
 
       if (state.jobsData && state.jobsData.allJobs && state.jobsData.allJobs.length > 0) {
         acceptedBacklog = state.jobsData.allJobs.map(normBacklogItem);
         if (state.jobsData.unmatchedPendingAdmin && state.jobsData.unmatchedPendingAdmin.jobs) {
           pendingAdminTotal = state.jobsData.unmatchedPendingAdmin.jobs.map(normBacklogItem);
         }
+        if (state.jobsData.pendingAir && state.jobsData.pendingAir.jobs) {
+          pendingAirTotal = state.jobsData.pendingAir.jobs.map(normBacklogItem);
+        }
       } else {
         // Fallback to notifications array
         let rawBacklog = state.notifications.filter(n =>
           n.message !== 'temp_upload' &&
-          ((n.channelName || '').includes('งานค้าง') || n.isTask || (n.title || '').includes('[ไฟฟ้า]') || (n.title || '').includes('[แอร์]') || n.taskStatus === 'pending_admin')
+          ((n.channelName || '').includes('งานค้าง') || n.isTask || (n.title || '').includes('[ไฟฟ้า]') || (n.title || '').includes('[แอร์]') || n.taskStatus === 'pending_admin' || n.taskStatus === 'pending_air')
         );
         if (rawBacklog.length === 0 && state.notifications.length > 0) {
           rawBacklog = state.notifications.filter(n => n.message !== 'temp_upload');
@@ -1979,8 +1999,21 @@
           allBacklog.push(n);
         }
         pendingAdminTotal = allBacklog.filter(n => n.taskStatus === 'pending_admin' || (n.title || '').includes('[รอแอดมินพิจารณา]'));
-        acceptedBacklog = allBacklog.filter(n => !(n.taskStatus === 'pending_admin' || (n.title || '').includes('[รอแอดมินพิจารณา]')));
+        pendingAirTotal = allBacklog.filter(n => n.taskStatus === 'pending_air' || (n.title || '').includes('[รอช่างแอร์รับเรื่อง]'));
+        acceptedBacklog = allBacklog.filter(n => !(n.taskStatus === 'pending_admin' || n.taskStatus === 'pending_air' || (n.title || '').includes('[รอแอดมินพิจารณา]') || (n.title || '').includes('[รอช่างแอร์รับเรื่อง]')));
       }
+
+      // Sync currentUser permissions from skillsData
+      if (state.currentUser && state.currentUser.id && state.skillsData && Array.isArray(state.skillsData.technicians)) {
+        const foundTech = state.skillsData.technicians.find(t => t.id === state.currentUser.id);
+        if (foundTech) {
+          state.currentUser.canAcceptAir = Boolean(foundTech.canAcceptAir);
+          state.currentUser.canAcceptElec = Boolean(foundTech.canAcceptElec);
+          state.currentUser.categories = foundTech.categories || [];
+        }
+      }
+
+      const canSeePendingAir = state.isAdmin || Boolean(state.currentUser && state.currentUser.canAcceptAir);
 
       // If technician is logged in, extract their personal job set directly from Jop DB!
       let myTechJobs = [];
@@ -1998,6 +2031,21 @@
       const allBacklogScopeSpan = document.getElementById('allBacklogScopeCount');
       if (myBacklogScopeSpan) myBacklogScopeSpan.textContent = myBacklogCount;
       if (allBacklogScopeSpan) allBacklogScopeSpan.textContent = acceptedBacklog.length;
+
+      const pendingAirBtn = document.getElementById('backlogScopeBtnPendingAir');
+      const pendingAirScopeSpan = document.getElementById('pendingAirScopeCount');
+      if (pendingAirBtn) {
+        pendingAirBtn.style.display = canSeePendingAir ? 'inline-flex' : 'none';
+        if (pendingAirScopeSpan) pendingAirScopeSpan.textContent = pendingAirTotal.length;
+        pendingAirBtn.classList.toggle('active', state.backlogTaskScope === 'pending_air');
+      }
+
+      const filterChipAir = document.getElementById('filterChipPendingAir');
+      const pendingAirFilterSpan = document.getElementById('pendingAirFilterSpan');
+      if (filterChipAir) {
+        filterChipAir.style.display = canSeePendingAir ? 'inline-block' : 'none';
+        if (pendingAirFilterSpan) pendingAirFilterSpan.textContent = pendingAirTotal.length;
+      }
 
       const myScopeLabel = document.getElementById('myBacklogScopeLabel');
       if (myScopeLabel) {
@@ -2017,6 +2065,8 @@
           // For Technician: their dedicated set of jobs!
           baseList = myTechJobs;
         }
+      } else if (state.backlogTaskScope === 'pending_air') {
+        baseList = pendingAirTotal;
       }
 
       // Counts for summary pills and chips
@@ -2042,6 +2092,7 @@
         summaryEl.innerHTML = `
           <span class="pill" style="background:rgba(245,158,11,0.2);color:#fcd34d;">⚡ ไฟฟ้า ${elecJobsTotal.length} งาน</span>
           <span class="pill" style="background:rgba(6,182,212,0.2);color:#67e8f9;">❄️ แอร์ ${airJobsTotal.length} งาน</span>
+          ${(canSeePendingAir && pendingAirTotal.length > 0) ? `<span class="pill" style="background:rgba(6,182,212,0.25);color:#a5f3fc;border:1px solid rgba(6,182,212,0.6);font-weight:700;">❄️ รอช่างแอร์ ${pendingAirTotal.length} งาน</span>` : ''}
           ${(state.isAdmin && pendingAdminTotal.length > 0) ? `<span class="pill" style="background:rgba(239,68,68,0.25);color:#fca5a5;border:1px solid rgba(239,68,68,0.5);font-weight:700;">⚠️ รอมอบหมาย ${pendingAdminTotal.length} งาน</span>` : ''}
           <span class="pill pill-urgent">🔴 เกินกำหนด ${overdueTotal.length} งาน</span>
           <span class="pill" style="background:rgba(6,199,85,0.2);color:#4ade80;">🟢 อยู่ในกำหนด ${normalTotal.length} งาน</span>
@@ -2053,6 +2104,8 @@
         filtered = baseList.filter(n => (n.channelName || '').includes('ไฟฟ้า') || (n.title || '').includes('[ไฟฟ้า]'));
       } else if (state.selectedBacklogFilter === 'air') {
         filtered = baseList.filter(n => (n.channelName || '').includes('แอร์') || (n.title || '').includes('[แอร์]'));
+      } else if (state.selectedBacklogFilter === 'pending_air') {
+        filtered = pendingAirTotal;
       } else if (state.selectedBacklogFilter === 'pending_admin') {
         filtered = state.isAdmin ? pendingAdminTotal : [];
       } else if (state.selectedBacklogFilter === 'overdue') {
@@ -2068,6 +2121,7 @@
       }
 
       listEl.innerHTML = filtered.map(n => {
+        const isPendingAir = n.taskStatus === 'pending_air' || (n.title || '').includes('[รอช่างแอร์รับเรื่อง]') || Boolean(n.isPendingAir);
         const isPendingAdmin = n.taskStatus === 'pending_admin' || (n.title || '').includes('[รอแอดมินพิจารณา]');
         const docnoMatch = (n.title || '').match(/(IF\d+|[A-Z0-9]{7,10})/i);
         const docno = (n.metadata && n.metadata.docno) || (docnoMatch ? docnoMatch[0] : '');
@@ -2077,7 +2131,72 @@
         let statusBar = '';
         let adminActionSection = '';
 
-        if (isPendingAdmin) {
+        if (isPendingAir) {
+          priorityBadge = `<span class="pill" style="background: rgba(6, 182, 212, 0.25); color: #67e8f9; border: 1px solid rgba(6, 182, 212, 0.6); font-weight: 700;">❄️ รอช่างแอร์รับเรื่อง</span>`;
+          assigneeBadge = `<span class="pill" style="background: rgba(6, 182, 212, 0.15); color: #a5f3fc; border: 1px solid rgba(6, 182, 212, 0.4);">👥 รอเลือกทีมช่างแอร์</span>`;
+          statusBar = `<span style="font-size: 0.78rem; color: #67e8f9; font-weight: 600;">❄️ ยังไม่ได้รับงานในระบบโรงงาน (รอช่างแอร์ประเมินวันและกดรับเรื่อง)</span>`;
+
+          const canOperateAir = state.isAdmin || Boolean(state.currentUser && state.currentUser.canAcceptAir);
+          if (canOperateAir) {
+            const allTechsSource = (state.skillsData && state.skillsData.technicians) || state.technicians || [];
+            const eligibleAirTechs = allTechsSource.filter(t => {
+              if (t.active === false || t.enabled === false) return false;
+              const cats = t.categories || [];
+              const skills = t.skills || [];
+              return cats.some(c => c.includes('แอร์')) || skills.some(s => s.includes('แอร์')) || t.canAcceptAir;
+            });
+
+            const airCheckboxes = eligibleAirTechs.map(t => {
+              const isChecked = state.currentUser && state.currentUser.id === t.id;
+              return `
+                <label style="display: flex; align-items: center; gap: 8px; font-size: 0.84rem; color: #f1f5f9; cursor: pointer; padding: 2px 0;">
+                  <input type="checkbox" name="air_tech_${n.id}" value="${escapeHtml(t.id)}" ${isChecked ? 'checked' : ''} style="width: 16px; height: 16px; accent-color: #06b6d4; cursor: pointer;" />
+                  <span>${escapeHtml(t.name)} (${escapeHtml(t.id)})</span>
+                </label>
+              `;
+            }).join('');
+
+            adminActionSection = `
+              <div class="tech-accept-box" style="margin-top: 14px; padding: 14px; background: rgba(6, 182, 212, 0.08); border: 1px solid rgba(6, 182, 212, 0.35); border-radius: 10px;">
+                <div style="display: flex; align-items: center; gap: 8px; font-weight: 600; color: #67e8f9; font-size: 0.88rem; margin-bottom: 6px;">
+                  <span>❄️ ระบุวันเสร็จ และเลือกทีมช่างแอร์ (กดรับเรื่องเข้า SQL โรงงาน)</span>
+                </div>
+                <div style="font-size: 0.8rem; color: #cbd5e1; margin-bottom: 12px; line-height: 1.5;">
+                  กำหนดระยะเวลาที่คาดว่าจะแล้วเสร็จ และติ๊กเลือกช่างที่จะไปปฏิบัติงานร่วมกัน (เลือกได้มากกว่า 1 คน):
+                </div>
+                <div style="display: flex; gap: 14px; flex-wrap: wrap; align-items: flex-start; margin-bottom: 12px;">
+                  <div style="width: 220px;">
+                    <label style="display: block; font-size: 0.76rem; color: var(--text-muted); margin-bottom: 4px;">กำหนดเสร็จ (วัน):</label>
+                    <div style="display: flex; align-items: center; gap: 6px;">
+                      <input type="number" id="air_days_${n.id}" class="form-control" value="7" min="1" max="90" style="width: 70px; font-size: 0.84rem; padding: 7px 6px; text-align: center;" />
+                      <span style="font-size: 0.78rem; color: var(--text-muted);">วัน</span>
+                      <button type="button" class="btn btn-sm" onclick="document.getElementById('air_days_${n.id}').value=3" style="padding: 4px 8px; font-size: 0.74rem; background: rgba(255,255,255,0.08); border: 1px solid var(--border); color: #cbd5e1; border-radius: 4px; cursor: pointer;">3ว.</button>
+                      <button type="button" class="btn btn-sm" onclick="document.getElementById('air_days_${n.id}').value=7" style="padding: 4px 8px; font-size: 0.74rem; background: rgba(255,255,255,0.08); border: 1px solid var(--border); color: #cbd5e1; border-radius: 4px; cursor: pointer;">7ว.</button>
+                      <button type="button" class="btn btn-sm" onclick="document.getElementById('air_days_${n.id}').value=14" style="padding: 4px 8px; font-size: 0.74rem; background: rgba(255,255,255,0.08); border: 1px solid var(--border); color: #cbd5e1; border-radius: 4px; cursor: pointer;">14ว.</button>
+                    </div>
+                  </div>
+                  <div style="flex: 1; min-width: 200px;">
+                    <label style="display: block; font-size: 0.76rem; color: var(--text-muted); margin-bottom: 4px;">เลือกช่างร่วมทีม (เฉพาะช่างหมวดแอร์):</label>
+                    <div style="display: flex; flex-direction: column; gap: 4px; background: rgba(0,0,0,0.25); padding: 8px 12px; border-radius: 8px; border: 1px solid rgba(255,255,255,0.06); max-height: 120px; overflow-y: auto;">
+                      ${airCheckboxes || '<span style="font-size:0.78rem;color:var(--text-muted);">ไม่พบรายชื่อช่างแอร์ในระบบ</span>'}
+                    </div>
+                  </div>
+                </div>
+                <div>
+                  <button class="btn btn-primary" id="btn_accept_air_${n.id}" onclick="handleTechAcceptAir('${n.id}', '${escapeHtml(docno)}')" style="background: #06b6d4; border-color: #0891b2; color: #082f49; font-weight: 700; padding: 7px 18px; font-size: 0.84rem; border-radius: 6px; cursor: pointer;">
+                    ⚡ รับเรื่อง & มอบหมายช่างแอร์
+                  </button>
+                </div>
+              </div>
+            `;
+          } else {
+            adminActionSection = `
+              <div style="margin-top: 10px; padding: 10px 12px; background: rgba(6, 182, 212, 0.06); border: 1px solid rgba(6, 182, 212, 0.2); border-radius: 8px; font-size: 0.82rem; color: #67e8f9; display: flex; align-items: center; gap: 6px;">
+                <span>❄️ งานแอร์กำลังรอช่างแอร์ประเมินวันเสร็จ และเลือกทีมเข้าปฏิบัติงาน</span>
+              </div>
+            `;
+          }
+        } else if (isPendingAdmin) {
           priorityBadge = `<span class="pill" style="background: rgba(239, 68, 68, 0.25); color: #fca5a5; border: 1px solid rgba(239, 68, 68, 0.6); font-weight: 700;">⚠️ รอแอดมินพิจารณา</span>`;
           assigneeBadge = `<span class="pill" style="background: rgba(245, 158, 11, 0.2); color: #fcd34d; border: 1px solid rgba(245, 158, 11, 0.4);">⏳ รอแอดมินมอบหมาย</span>`;
           statusBar = `<span style="font-size: 0.78rem; color: #fbbf24; font-weight: 600;">⚠️ ยังไม่ได้รับงานในระบบโรงงาน</span>`;
@@ -2367,6 +2486,81 @@ print(r.json())`;
         if (btnEl) {
           btnEl.disabled = false;
           btnEl.textContent = '⚡ รับเรื่อง & มอบหมายช่าง';
+        }
+      }
+    }
+
+    async function handleTechAcceptAir(notifId, docno) {
+      const daysInput = document.getElementById(`air_days_${notifId}`);
+      const days = parseInt(daysInput ? daysInput.value : '7', 10) || 7;
+      const checkedCbs = Array.from(document.querySelectorAll(`input[name="air_tech_${notifId}"]:checked`));
+      if (checkedCbs.length === 0) {
+        alert('กรุณาติ๊กเลือกช่างผู้รับผิดชอบอย่างน้อย 1 คนครับ');
+        return;
+      }
+      const techIds = checkedCbs.map(cb => cb.value);
+      const allTechsSource = (state.skillsData && state.skillsData.technicians) || state.technicians || [];
+      const techNames = allTechsSource
+        .filter(t => techIds.includes(t.id))
+        .map(t => t.name)
+        .join(', ') || techIds.join(', ');
+
+      const btnEl = document.getElementById(`btn_accept_air_${notifId}`);
+      if (btnEl) {
+        btnEl.disabled = true;
+        btnEl.textContent = '⏳ กำลังบันทึกรับเรื่อง...';
+      }
+
+      try {
+        const res = await fetch('/api/jobs/accept', {
+          method: 'POST',
+          headers: {
+            'Content-Type': 'application/json',
+            'X-User-Id': state.currentUser ? state.currentUser.id : '',
+            ...getAdminHeaders()
+          },
+          body: JSON.stringify({
+            notifId,
+            docno,
+            category: 'air',
+            estimateDays: days,
+            techIds,
+            techName: techNames,
+            callerUserId: state.currentUser ? state.currentUser.id : ''
+          })
+        });
+
+        const data = await res.json();
+        if (!res.ok || (!data.ok && data.status !== 200)) {
+          throw new Error(data.error || data.message || 'รับเรื่องล้มเหลว');
+        }
+
+        showToast(`❄️ รับเรื่อง ${docno} สำเร็จ!`, `มอบหมาย: ${techNames} (กำหนดเสร็จใน ${days} วัน)`);
+
+        // Update local notification status
+        const notif = (state.notifications || []).find(n => n.id === notifId || (docno && extractDocnoClient(n) === String(docno).toUpperCase()));
+        if (notif) {
+          notif.taskStatus = 'in_progress';
+          notif.assignee = techNames;
+          notif.title = (notif.title || '').replace('[รอช่างแอร์รับเรื่อง]', '').trim();
+          notif.priority = 'high';
+        }
+
+        // Remove from local pendingAir immediately
+        if (state.jobsData && state.jobsData.pendingAir && Array.isArray(state.jobsData.pendingAir.jobs)) {
+          state.jobsData.pendingAir.jobs = state.jobsData.pendingAir.jobs.filter(j => (j.docno || '').toUpperCase() !== String(docno).toUpperCase());
+          state.jobsData.pendingAir.count = state.jobsData.pendingAir.jobs.length;
+          if (state.jobsData.summary) {
+            state.jobsData.summary.pendingAirCount = state.jobsData.pendingAir.count;
+          }
+        }
+
+        renderBacklogView();
+      } catch (err) {
+        alert('เกิดข้อผิดพลาด: ' + err.message);
+        if (btnEl) {
+          btnEl.disabled = false;
+          btnEl.textContent = '⚡ รับเรื่อง & มอบหมายช่างแอร์';
         }
       }
     }

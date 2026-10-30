@@ -114,6 +114,10 @@ function buildSkillsDb() {
   const skillsList = Object.values(allTechsMap);
   skillsList.forEach(t => {
     t.rawKeywords = t.skills.join(', ');
+    const perm = cfg.permissions?.[t.id] || {};
+    const isAirRuleSelfAccept = (cfg.airTechRules || []).some(r => r.id === t.id && (r.canSelfAccept !== false));
+    t.canAcceptAir = perm.canAcceptAir !== undefined ? Boolean(perm.canAcceptAir) : (isAirRuleSelfAccept && t.categories.includes('แอร์'));
+    t.canAcceptElec = perm.canAcceptElec !== undefined ? Boolean(perm.canAcceptElec) : false;
   });
 
   const skillsDb = {
@@ -153,6 +157,30 @@ function buildJopDb(optionalBacklog = null, optionalPending = null) {
 
   const config = readJsonSafe(BOT_CONFIG_FILE, {});
   const unmatchedPending = (pending || []).filter(item => !isJobMatchedByRules(item, config));
+  const airPending = (pending || []).filter(item => isAirJob(item) && isJobMatchedByRules(item, config));
+
+  const pendingAirJobs = airPending.map(item => {
+    return {
+      docno: item.docno,
+      category: 'air',
+      categoryBadge: '❄️ [แอร์]',
+      statusBadge: '⏳ [รอช่างแอร์รับเรื่อง]',
+      jobType: item.jobType || '3',
+      symptom: item.symptom,
+      deptName: item.deptName,
+      location: item.location,
+      date1: item.date1,
+      time1: item.time1,
+      requester: item.requester,
+      receiver: '-',
+      techs: 'รอช่างแอร์รับเรื่อง & ระบุช่าง',
+      picname: item.picname,
+      priority: 'high',
+      status: 'pending_air',
+      taskStatus: 'pending_air',
+      isPendingAir: true
+    };
+  });
 
   const byTech = {};
   technicians.forEach(t => {
@@ -254,10 +282,16 @@ function buildJopDb(optionalBacklog = null, optionalPending = null) {
       totalAccepted: backlog.length,
       elecCount,
       airCount,
+      pendingAirCount: pendingAirJobs.length,
       pendingAdminCount: pendingAdminJobs.length
     },
     byTechnician: byTech,
     unassigned,
+    pendingAir: {
+      description: 'งานแอร์รอช่างแอร์ประเมินวันเสร็จและเลือกช่างรับเรื่องเอง',
+      count: pendingAirJobs.length,
+      jobs: pendingAirJobs
+    },
     unmatchedPendingAdmin: {
       description: 'งานที่ไม่ตรงกับเงื่อนไขคีย์เวิร์ดของช่างคนใด รอแอดมินพิจารณาตัดสินใจ',
       count: pendingAdminJobs.length,
