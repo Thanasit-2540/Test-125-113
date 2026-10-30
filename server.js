@@ -184,6 +184,12 @@ function enrichJobsWithImages(jobsDb) {
       jobs: enriched.pendingAir.jobs.map(enrichJob)
     };
   }
+  if (enriched.pendingElec && Array.isArray(enriched.pendingElec.jobs)) {
+    enriched.pendingElec = {
+      ...enriched.pendingElec,
+      jobs: enriched.pendingElec.jobs.map(enrichJob)
+    };
+  }
   return enriched;
 }
 
@@ -1251,15 +1257,23 @@ async function executeJobAccept({ notifId, docno, techIds, techId, techName, est
         jop.pendingAir.jobs = jop.pendingAir.jobs.filter(j => (j.docno || '').toUpperCase() !== targetDocno);
         jop.pendingAir.count = jop.pendingAir.jobs.length;
       }
+      if (jop.pendingElec && Array.isArray(jop.pendingElec.jobs)) {
+        if (!acceptedItem) {
+          acceptedItem = jop.pendingElec.jobs.find(j => (j.docno || '').toUpperCase() === targetDocno);
+        }
+        jop.pendingElec.jobs = jop.pendingElec.jobs.filter(j => (j.docno || '').toUpperCase() !== targetDocno);
+        jop.pendingElec.count = jop.pendingElec.jobs.length;
+      }
       if (jop.unmatchedPendingAdmin && Array.isArray(jop.unmatchedPendingAdmin.jobs)) {
         if (!acceptedItem) {
-          acceptedItem = jop.unmatchedPendingAdmin.jobs.find(j => (j.docno || '').toUpperCase() !== targetDocno);
+          acceptedItem = jop.unmatchedPendingAdmin.jobs.find(j => (j.docno || '').toUpperCase() === targetDocno);
         }
         jop.unmatchedPendingAdmin.jobs = jop.unmatchedPendingAdmin.jobs.filter(j => (j.docno || '').toUpperCase() !== targetDocno);
         jop.unmatchedPendingAdmin.count = jop.unmatchedPendingAdmin.jobs.length;
       }
       if (jop.summary) {
         if (jop.pendingAir) jop.summary.pendingAirCount = jop.pendingAir.count;
+        if (jop.pendingElec) jop.summary.pendingElecCount = jop.pendingElec.count;
         if (jop.unmatchedPendingAdmin) jop.summary.pendingAdminCount = jop.unmatchedPendingAdmin.count;
       }
 
@@ -1345,7 +1359,7 @@ app.post('/api/jobs/accept', async (req, res) => {
         return res.status(403).json({ ok: false, error: 'คุณไม่มีสิทธิ์ในการรับงานแอร์ (สิทธิ์ถูกควบคุมจากคอมพิวเตอร์หลัก)' });
       }
       if (!isAir && !callerTech.canAcceptElec) {
-        return res.status(403).json({ ok: false, error: 'คุณไม่มีสิทธิ์ในการรับงานไฟฟ้านี้' });
+        return res.status(403).json({ ok: false, error: 'คุณไม่มีสิทธิ์ในการรับงานไฟฟ้า (สิทธิ์ถูกควบคุมจากคอมพิวเตอร์หลัก)' });
       }
     }
 

@@ -159,6 +159,7 @@ function buildJopDb(optionalBacklog = null, optionalPending = null) {
   const config = readJsonSafe(BOT_CONFIG_FILE, {});
   const unmatchedPending = (pending || []).filter(item => !isJobMatchedByRules(item, config));
   const airPending = (pending || []).filter(item => isAirJob(item) && isJobMatchedByRules(item, config));
+  const elecPending = (pending || []).filter(item => !isAirJob(item) && isJobMatchedByRules(item, config));
 
   const pendingAirJobs = airPending.map(item => {
     return {
@@ -180,6 +181,29 @@ function buildJopDb(optionalBacklog = null, optionalPending = null) {
       status: 'pending_air',
       taskStatus: 'pending_air',
       isPendingAir: true
+    };
+  });
+
+  const pendingElecJobs = elecPending.map(item => {
+    return {
+      docno: item.docno,
+      category: 'elec',
+      categoryBadge: '⚡ [ไฟฟ้า]',
+      statusBadge: '⏳ [รอช่างไฟฟ้ารับเรื่อง]',
+      jobType: item.jobType || '7',
+      symptom: item.symptom,
+      deptName: item.deptName,
+      location: item.location,
+      date1: item.date1,
+      time1: item.time1,
+      requester: item.requester,
+      receiver: '-',
+      techs: 'รอช่างไฟฟ้ารับเรื่อง & ระบุช่าง',
+      picname: item.picname,
+      priority: 'high',
+      status: 'pending_elec',
+      taskStatus: 'pending_elec',
+      isPendingElec: true
     };
   });
 
@@ -284,6 +308,7 @@ function buildJopDb(optionalBacklog = null, optionalPending = null) {
       elecCount,
       airCount,
       pendingAirCount: pendingAirJobs.length,
+      pendingElecCount: pendingElecJobs.length,
       pendingAdminCount: pendingAdminJobs.length
     },
     byTechnician: byTech,
@@ -292,6 +317,11 @@ function buildJopDb(optionalBacklog = null, optionalPending = null) {
       description: 'งานแอร์รอช่างแอร์ประเมินวันเสร็จและเลือกช่างรับเรื่องเอง',
       count: pendingAirJobs.length,
       jobs: pendingAirJobs
+    },
+    pendingElec: {
+      description: 'งานไฟฟ้ารอช่างไฟฟ้าประเมินวันเสร็จและเลือกช่างรับเรื่องเอง',
+      count: pendingElecJobs.length,
+      jobs: pendingElecJobs
     },
     unmatchedPendingAdmin: {
       description: 'งานที่ไม่ตรงกับเงื่อนไขคีย์เวิร์ดของช่างคนใด รอแอดมินพิจารณาตัดสินใจ',
