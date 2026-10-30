@@ -115,9 +115,10 @@ function buildSkillsDb() {
   skillsList.forEach(t => {
     t.rawKeywords = t.skills.join(', ');
     const perm = cfg.permissions?.[t.id] || {};
-    const isAirRuleSelfAccept = (cfg.airTechRules || []).some(r => r.id === t.id && (r.canSelfAccept !== false));
+    const isAirRuleSelfAccept = (cfg.airTechRules || []).some(r => r.id === t.id && (r.canSelfAccept === true));
+    const isElecRuleSelfAccept = (cfg.elecTechRules || []).some(r => r.id === t.id && (r.canSelfAccept === true));
     t.canAcceptAir = perm.canAcceptAir !== undefined ? Boolean(perm.canAcceptAir) : (isAirRuleSelfAccept && t.categories.includes('แอร์'));
-    t.canAcceptElec = perm.canAcceptElec !== undefined ? Boolean(perm.canAcceptElec) : false;
+    t.canAcceptElec = perm.canAcceptElec !== undefined ? Boolean(perm.canAcceptElec) : (isElecRuleSelfAccept && t.categories.includes('ไฟฟ้า/โทรศัพท์'));
   });
 
   const skillsDb = {
