@@ -466,7 +466,11 @@ app.post('/api/auth/login', (req, res) => {
     });
   }
 
-  const cleanId = rawInput.toUpperCase();
+  let cleanId = rawInput.toUpperCase();
+  // Allow Kittiphong to log in with his factory username or factory password as well
+  if (cleanId === 'KITTIPHONG' || cleanId === '9999') {
+    cleanId = '52B13';
+  }
   const tech = (db.technicians || []).find(t => t.id && String(t.id).trim().toUpperCase() === cleanId);
 
   if (!tech || tech.active === false) {
@@ -1163,7 +1167,12 @@ async function executeJobAccept({ notifId, docno, techIds, techId, techName, est
     .map(t => t.name)
     .join(', ') || techIdsComma;
 
-  const factoryUser = user || (getBotConfigData() ? getBotConfigData().factoryUser : 'THANASIT') || 'THANASIT';
+  // If assigned to 52B13 (Kittiphong Sriyotha) or accepted by him, use his factory credentials
+  const hasKittiphong = techIdsArr.some(id => String(id).toUpperCase() === '52B13') ||
+                        (finalTechName && finalTechName.includes('กิตติพงษ์')) ||
+                        (user && String(user).toUpperCase() === '52B13') ||
+                        (user && String(user).toUpperCase() === 'KITTIPHONG');
+  const factoryUser = hasKittiphong ? 'KITTIPHONG' : (user || (getBotConfigData() ? getBotConfigData().factoryUser : 'THANASIT') || 'THANASIT');
   const estDays = Math.max(1, parseInt(estimateDays, 10) || 7);
 
   let acceptResult = null;
