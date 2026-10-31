@@ -46,6 +46,8 @@
       color: var(--text);
       min-height: 100vh;
       line-height: 1.5;
+      overflow-x: hidden;
+      max-width: 100vw;
     }
 
     /* Top Header */
@@ -261,6 +263,22 @@
       border-radius: var(--radius);
       padding: 20px;
       margin-bottom: 18px;
+      max-width: 100%;
+      box-sizing: border-box;
+      overflow: hidden;
+    }
+
+    @media (max-width: 600px) {
+      .container {
+        padding: 0 10px 40px !important;
+      }
+      .card {
+        padding: 14px 10px !important;
+        border-radius: 12px;
+      }
+      .notif-card {
+        padding: 12px 10px !important;
+      }
     }
 
     .card-header {
@@ -328,6 +346,10 @@
       padding: 16px 18px;
       transition: all 0.2s;
       animation: slideIn 0.25s ease-out;
+      max-width: 100%;
+      box-sizing: border-box;
+      overflow: hidden;
+      word-break: break-word;
     }
 
     @keyframes slideIn {
@@ -351,13 +373,17 @@
       gap: 8px;
       margin-bottom: 8px;
       flex-wrap: wrap;
+      max-width: 100%;
+      min-width: 0;
     }
 
     .notif-badges {
       display: flex;
       align-items: center;
-      gap: 8px;
+      gap: 6px;
       flex-wrap: wrap;
+      max-width: 100%;
+      min-width: 0;
     }
 
     .pill {
@@ -366,6 +392,9 @@
       border-radius: 999px;
       font-weight: 500;
       background: rgba(255,255,255,0.08);
+      max-width: 100%;
+      box-sizing: border-box;
+      word-break: break-word;
     }
 
     .pill-urgent {
@@ -562,6 +591,10 @@
       display: flex;
       flex-direction: column;
       gap: 10px;
+      width: 100%;
+      max-width: 100%;
+      box-sizing: border-box;
+      overflow: hidden;
     }
 
     .toolbar-search-wrap {
@@ -569,6 +602,9 @@
       display: flex;
       align-items: center;
       width: 100%;
+      max-width: 100%;
+      min-width: 0;
+      box-sizing: border-box;
     }
 
     .toolbar-search-wrap .search-icon {
@@ -581,6 +617,9 @@
 
     .toolbar-search-input {
       width: 100%;
+      max-width: 100%;
+      min-width: 0;
+      box-sizing: border-box;
       padding: 8px 36px 8px 36px;
       background: var(--bg-input);
       border: 1px solid var(--border);
@@ -620,45 +659,60 @@
 
     .toolbar-controls-row {
       display: grid;
-      grid-template-columns: 1fr;
+      grid-template-columns: minmax(0, 1fr);
       gap: 8px;
+      width: 100%;
+      max-width: 100%;
+      min-width: 0;
+      box-sizing: border-box;
     }
 
     @media (min-width: 580px) {
       .toolbar-controls-row {
-        grid-template-columns: 1fr 1fr;
+        grid-template-columns: minmax(0, 1fr) minmax(0, 1fr);
       }
     }
 
-    .toolbar-control-group {
+    .toolbar-field {
       display: flex;
-      align-items: center;
-      gap: 8px;
-      background: rgba(255, 255, 255, 0.03);
-      padding: 4px 8px;
+      flex-direction: column;
+      gap: 4px;
+      background: rgba(255, 255, 255, 0.02);
+      padding: 6px 10px;
       border-radius: 8px;
-      border: 1px solid rgba(255, 255, 255, 0.05);
+      border: 1px solid rgba(255, 255, 255, 0.06);
+      width: 100%;
+      max-width: 100%;
+      min-width: 0;
+      box-sizing: border-box;
     }
 
-    .toolbar-label {
-      font-size: 0.8rem;
+    .toolbar-field-label {
+      font-size: 0.76rem;
       color: var(--text-muted);
       white-space: nowrap;
       font-weight: 500;
+      overflow: hidden;
+      text-overflow: ellipsis;
     }
 
     .toolbar-select {
-      flex: 1;
-      min-width: 0;
+      display: block;
+      width: 100% !important;
+      max-width: 100% !important;
+      min-width: 0 !important;
+      box-sizing: border-box !important;
       background: var(--bg-input);
       border: 1px solid var(--border);
       border-radius: 6px;
       color: var(--text);
       font-size: 0.84rem;
-      padding: 6px 8px;
+      padding: 7px 8px;
       outline: none;
       cursor: pointer;
+      overflow: hidden;
       text-overflow: ellipsis;
+      white-space: nowrap;
     }
 
     .toolbar-select:focus {
@@ -677,6 +731,10 @@
       justify-content: space-between;
       gap: 8px;
       flex-wrap: wrap;
+      width: 100%;
+      max-width: 100%;
+      min-width: 0;
+      box-sizing: border-box;
     }
 
     /* Admin Modal */
@@ -986,20 +1044,20 @@
         <div class="backlog-toolbar" id="backlogToolbar">
           <div class="toolbar-search-wrap">
             <span class="search-icon">🔍</span>
-            <input type="text" id="backlogSearchInput" class="toolbar-search-input" placeholder="ค้นหาอาการเสีย, เลขใบงาน IF..., แผนก/สถานที่, ชื่อช่าง..." oninput="handleBacklogSearch(this.value)" autocomplete="off" />
+            <input type="text" id="backlogSearchInput" class="toolbar-search-input" placeholder="ค้นหาอาการ, เลขใบงาน, แผนก/สถานที่, ช่าง..." oninput="handleBacklogSearch(this.value)" autocomplete="off" />
             <button type="button" id="backlogSearchClearBtn" class="search-clear-btn" style="display:none;" onclick="clearBacklogSearch()" title="ล้างการค้นหา">✕</button>
           </div>
           <div class="toolbar-controls-row">
-            <div class="toolbar-control-group">
-              <label for="backlogSortSelect" class="toolbar-label">เรียงลำดับ:</label>
+            <div class="toolbar-field">
+              <label for="backlogSortSelect" class="toolbar-field-label">🕒 เรียงลำดับงาน:</label>
               <select id="backlogSortSelect" class="toolbar-select" onchange="handleBacklogSortChange(this.value)">
                 <option value="newest">🕒 ล่าสุด (ใหม่สุดก่อน)</option>
                 <option value="oldest">⏳ เก่าสุด (ค้างนานสุดก่อน)</option>
                 <option value="location">📍 จัดกลุ่มตามพื้นที่/แผนก</option>
               </select>
             </div>
-            <div class="toolbar-control-group">
-              <label for="backlogAreaSelect" class="toolbar-label">พื้นที่/แผนก:</label>
+            <div class="toolbar-field">
+              <label for="backlogAreaSelect" class="toolbar-field-label">🏢 กรองตามพื้นที่/แผนก:</label>
               <select id="backlogAreaSelect" class="toolbar-select" onchange="handleBacklogAreaChange(this.value)">
                 <option value="all">📍 ทุกพื้นที่ / ทุกแผนก</option>
               </select>
