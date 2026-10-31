@@ -3192,6 +3192,14 @@ print(r.json())`;
       }
     }
 
+    function extractDocnoClient(n) {
+      if (!n) return '';
+      if (n.docno) return String(n.docno).toUpperCase();
+      if (n.metadata && n.metadata.docno) return String(n.metadata.docno).toUpperCase();
+      const m = (n.title || '').match(/\b(IF\d+|[A-Z0-9]{7,10})\b/i);
+      return m ? m[1].toUpperCase() : '';
+    }
+
     async function handleTechAcceptJob(notifId, docno, category = 'air') {
       const isAir = category === 'air';
       const prefix = isAir ? 'air' : 'elec';
