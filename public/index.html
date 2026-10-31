@@ -552,6 +552,133 @@
       font-weight: 600;
     }
 
+    /* Backlog Filter & Search Toolbar */
+    .backlog-toolbar {
+      background: rgba(15, 23, 42, 0.65);
+      border: 1px solid var(--border);
+      border-radius: 12px;
+      padding: 10px 12px;
+      margin-bottom: 16px;
+      display: flex;
+      flex-direction: column;
+      gap: 10px;
+    }
+
+    .toolbar-search-wrap {
+      position: relative;
+      display: flex;
+      align-items: center;
+      width: 100%;
+    }
+
+    .toolbar-search-wrap .search-icon {
+      position: absolute;
+      left: 12px;
+      font-size: 0.95rem;
+      pointer-events: none;
+      opacity: 0.7;
+    }
+
+    .toolbar-search-input {
+      width: 100%;
+      padding: 8px 36px 8px 36px;
+      background: var(--bg-input);
+      border: 1px solid var(--border);
+      border-radius: 8px;
+      color: var(--text);
+      font-size: 0.88rem;
+      outline: none;
+      transition: all 0.2s ease;
+    }
+
+    .toolbar-search-input:focus {
+      border-color: var(--primary);
+      box-shadow: 0 0 0 2px rgba(6, 199, 85, 0.2);
+    }
+
+    .toolbar-search-wrap .search-clear-btn {
+      position: absolute;
+      right: 8px;
+      background: rgba(255, 255, 255, 0.1);
+      border: none;
+      border-radius: 50%;
+      width: 22px;
+      height: 22px;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      color: var(--text-muted);
+      cursor: pointer;
+      font-size: 0.75rem;
+      transition: all 0.15s ease;
+    }
+
+    .toolbar-search-wrap .search-clear-btn:hover {
+      background: rgba(239, 68, 68, 0.25);
+      color: #f87171;
+    }
+
+    .toolbar-controls-row {
+      display: grid;
+      grid-template-columns: 1fr;
+      gap: 8px;
+    }
+
+    @media (min-width: 580px) {
+      .toolbar-controls-row {
+        grid-template-columns: 1fr 1fr;
+      }
+    }
+
+    .toolbar-control-group {
+      display: flex;
+      align-items: center;
+      gap: 8px;
+      background: rgba(255, 255, 255, 0.03);
+      padding: 4px 8px;
+      border-radius: 8px;
+      border: 1px solid rgba(255, 255, 255, 0.05);
+    }
+
+    .toolbar-label {
+      font-size: 0.8rem;
+      color: var(--text-muted);
+      white-space: nowrap;
+      font-weight: 500;
+    }
+
+    .toolbar-select {
+      flex: 1;
+      min-width: 0;
+      background: var(--bg-input);
+      border: 1px solid var(--border);
+      border-radius: 6px;
+      color: var(--text);
+      font-size: 0.84rem;
+      padding: 6px 8px;
+      outline: none;
+      cursor: pointer;
+      text-overflow: ellipsis;
+    }
+
+    .toolbar-select:focus {
+      border-color: var(--primary);
+    }
+
+    .toolbar-active-filter {
+      font-size: 0.78rem;
+      color: #38bdf8;
+      background: rgba(56, 189, 248, 0.1);
+      border: 1px solid rgba(56, 189, 248, 0.25);
+      border-radius: 6px;
+      padding: 6px 12px;
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      gap: 8px;
+      flex-wrap: wrap;
+    }
+
     /* Admin Modal */
     .modal-backdrop {
       position: fixed;
@@ -854,6 +981,33 @@
           <button class="filter-chip" onclick="setBacklogTechFilter('air', this)">❄️ แอร์ (<span id="airCountSpan">0</span>)</button>
           <button class="filter-chip" onclick="setBacklogTechFilter('overdue', this)">🔴 เกินกำหนด</button>
         </div>
+
+        <!-- Toolbar: ค้นหา / ตัวกรองพื้นที่ / เรียงลำดับ ล่าสุด-เก่าสุด-พื้นที่เดียวกัน -->
+        <div class="backlog-toolbar" id="backlogToolbar">
+          <div class="toolbar-search-wrap">
+            <span class="search-icon">🔍</span>
+            <input type="text" id="backlogSearchInput" class="toolbar-search-input" placeholder="ค้นหาอาการเสีย, เลขใบงาน IF..., แผนก/สถานที่, ชื่อช่าง..." oninput="handleBacklogSearch(this.value)" autocomplete="off" />
+            <button type="button" id="backlogSearchClearBtn" class="search-clear-btn" style="display:none;" onclick="clearBacklogSearch()" title="ล้างการค้นหา">✕</button>
+          </div>
+          <div class="toolbar-controls-row">
+            <div class="toolbar-control-group">
+              <label for="backlogSortSelect" class="toolbar-label">เรียงลำดับ:</label>
+              <select id="backlogSortSelect" class="toolbar-select" onchange="handleBacklogSortChange(this.value)">
+                <option value="newest">🕒 ล่าสุด (ใหม่สุดก่อน)</option>
+                <option value="oldest">⏳ เก่าสุด (ค้างนานสุดก่อน)</option>
+                <option value="location">📍 จัดกลุ่มตามพื้นที่/แผนก</option>
+              </select>
+            </div>
+            <div class="toolbar-control-group">
+              <label for="backlogAreaSelect" class="toolbar-label">พื้นที่/แผนก:</label>
+              <select id="backlogAreaSelect" class="toolbar-select" onchange="handleBacklogAreaChange(this.value)">
+                <option value="all">📍 ทุกพื้นที่ / ทุกแผนก</option>
+              </select>
+            </div>
+          </div>
+          <div id="backlogActiveFilterNotice" class="toolbar-active-filter" style="display: none;"></div>
+        </div>
+
         <div id="backlogList" class="notif-list"></div>
       </div>
     </section>
@@ -1141,6 +1295,9 @@
       currentUser: savedUser,
       backlogTaskScope: isActualAdmin ? 'all' : 'mine',
       selectedBacklogFilter: 'all',
+      backlogSortBy: 'newest',
+      backlogSelectedArea: 'all',
+      backlogSearchQuery: '',
       soundEnabled: true,
       isAdmin: isActualAdmin,
       adminToken: isActualAdmin ? savedAdminToken : '',
@@ -1941,6 +2098,12 @@
     function normBacklogItem(n) {
       if (!n) return n;
       if (n.title && n.message) {
+        if (!n.deptName && n.metadata && n.metadata.deptName) n.deptName = n.metadata.deptName;
+        if (!n.location && n.metadata && n.metadata.location) n.location = n.metadata.location;
+        if (!n.date1 && n.metadata && n.metadata.date1) n.date1 = n.metadata.date1;
+        if (!n.time1 && n.metadata && n.metadata.time1) n.time1 = n.metadata.time1;
+        if (!n.symptom && n.metadata && n.metadata.symptom) n.symptom = n.metadata.symptom;
+        if (!n.docno && n.metadata && n.metadata.docno) n.docno = n.metadata.docno;
         if (!n.image && n.docno && Array.isArray(state.notifications)) {
           const docUpper = String(n.docno).toUpperCase();
           const match = state.notifications.find(notif => {
@@ -1989,6 +2152,15 @@
       return {
         id: n.id || n.docno,
         docno: n.docno,
+        date1: n.date1 || (n.metadata && n.metadata.date1) || '',
+        time1: n.time1 || (n.metadata && n.metadata.time1) || '',
+        deptName: n.deptName || (n.metadata && n.metadata.deptName) || '',
+        location: n.location || (n.metadata && n.metadata.location) || '',
+        symptom: n.symptom || (n.metadata && n.metadata.symptom) || '',
+        receiver: n.receiver || (n.metadata && n.metadata.receiver) || '',
+        recvDate: n.recvDate || (n.metadata && n.metadata.recvDate) || '',
+        estDate: n.estDate || (n.metadata && n.metadata.estDate) || '',
+        requester: n.requester || (n.metadata && n.metadata.requester) || '',
         title: `${typeBadge} ${n.docno} ${statusBadge} ${n.deptName || ''}${locStr}`,
         message: [
           `🔧 อาการที่เสีย: ${n.symptom || '-'}`,
@@ -2014,6 +2186,120 @@
           requester: n.requester
         }
       };
+    }
+
+    function getJobTimestamp(n) {
+      const dStr = n.date1 || (n.metadata && n.metadata.date1) || '';
+      const tStr = n.time1 || (n.metadata && n.metadata.time1) || '00:00:00';
+      if (dStr && dStr.includes('/')) {
+        const parts = dStr.trim().split('/');
+        if (parts.length === 3) {
+          const day = parseInt(parts[0], 10);
+          const month = parseInt(parts[1], 10) - 1;
+          let year = parseInt(parts[2], 10);
+          if (year > 2400) year -= 543;
+          const tParts = tStr.trim().split(':');
+          const hours = parseInt(tParts[0] || '0', 10);
+          const mins = parseInt(tParts[1] || '0', 10);
+          const secs = parseInt(tParts[2] || '0', 10);
+          const dt = new Date(year, month, day, hours, mins, secs);
+          if (!isNaN(dt.getTime())) return dt.getTime();
+        }
+      }
+      const m = String(n.docno || n.id || '').match(/IF(\d+)/i);
+      if (m && m[1]) return parseInt(m[1], 10) * 1000;
+      return 0;
+    }
+
+    function getJobAreaGroup(n) {
+      const dept = (n.deptName || (n.metadata && n.metadata.deptName) || '').trim();
+      const loc = (n.location || (n.metadata && n.metadata.location) || '').trim();
+      if (dept) return dept;
+      if (loc) return loc;
+      return 'อื่นๆ (ไม่ระบุ)';
+    }
+
+    function updateAreaDropdownOptions(items) {
+      const selectEl = document.getElementById('backlogAreaSelect');
+      if (!selectEl) return;
+
+      const counts = {};
+      items.forEach(n => {
+        const area = getJobAreaGroup(n);
+        if (area) {
+          counts[area] = (counts[area] || 0) + 1;
+        }
+      });
+
+      const sortedAreas = Object.keys(counts).sort((a, b) => a.localeCompare(b, 'th'));
+      const curVal = state.backlogSelectedArea || 'all';
+
+      let optionsHtml = `<option value="all">📍 ทุกพื้นที่ / ทุกแผนก (${items.length})</option>`;
+      sortedAreas.forEach(area => {
+        const cnt = counts[area];
+        const isSelected = (curVal === area) ? 'selected' : '';
+        optionsHtml += `<option value="${escapeHtml(area)}" ${isSelected}>🏢 ${escapeHtml(area)} (${cnt})</option>`;
+      });
+
+      const currentOptsHash = fastHash(optionsHtml);
+      if (selectEl.dataset.optionsHash !== currentOptsHash) {
+        selectEl.innerHTML = optionsHtml;
+        selectEl.dataset.optionsHash = currentOptsHash;
+      }
+      if (selectEl.value !== curVal && (curVal === 'all' || sortedAreas.includes(curVal))) {
+        selectEl.value = curVal;
+      }
+    }
+
+    let searchDebounceTimer = null;
+    function handleBacklogSearch(query) {
+      if (searchDebounceTimer) clearTimeout(searchDebounceTimer);
+      searchDebounceTimer = setTimeout(() => {
+        state.backlogSearchQuery = (query || '').trim();
+        const clearBtn = document.getElementById('backlogSearchClearBtn');
+        if (clearBtn) {
+          clearBtn.style.display = state.backlogSearchQuery ? 'flex' : 'none';
+        }
+        renderBacklogView();
+      }, 150);
+    }
+
+    function clearBacklogSearch() {
+      const inputEl = document.getElementById('backlogSearchInput');
+      if (inputEl) inputEl.value = '';
+      state.backlogSearchQuery = '';
+      const clearBtn = document.getElementById('backlogSearchClearBtn');
+      if (clearBtn) clearBtn.style.display = 'none';
+      renderBacklogView();
+    }
+
+    function handleBacklogSortChange(val) {
+      state.backlogSortBy = val || 'newest';
+      renderBacklogView(true);
+    }
+
+    function handleBacklogAreaChange(val) {
+      state.backlogSelectedArea = val || 'all';
+      renderBacklogView(true);
+    }
+
+    function resetBacklogFilters() {
+      state.backlogSearchQuery = '';
+      state.backlogSelectedArea = 'all';
+      state.backlogSortBy = 'newest';
+
+      const searchInput = document.getElementById('backlogSearchInput');
+      if (searchInput) searchInput.value = '';
+      const clearBtn = document.getElementById('backlogSearchClearBtn');
+      if (clearBtn) clearBtn.style.display = 'none';
+
+      const sortSel = document.getElementById('backlogSortSelect');
+      if (sortSel) sortSel.value = 'newest';
+
+      const areaSel = document.getElementById('backlogAreaSelect');
+      if (areaSel) areaSel.value = 'all';
+
+      renderBacklogView(true);
     }
 
     function fastHash(str) {
@@ -2231,12 +2517,21 @@
       const borderLeftColor = isPendingAir ? '#06b6d4' : ((isPendingElec || isPendingAdmin) ? '#f59e0b' : (n.priority === 'urgent' ? '#ef4444' : '#f59e0b'));
       const cardBg = isPendingAir ? 'background: rgba(6, 182, 212, 0.03);' : ((isPendingElec || isPendingAdmin) ? 'background: rgba(245, 158, 11, 0.03);' : '');
 
+      const locArea = (n.deptName || (n.metadata && n.metadata.deptName) || '').trim();
+      const locDetail = (n.location || (n.metadata && n.metadata.location) || '').trim();
+      let areaBadge = '';
+      if (locArea || locDetail) {
+        const fullLoc = (locArea && locDetail && locArea !== locDetail) ? `${locArea} • ${locDetail}` : (locArea || locDetail);
+        areaBadge = `<span class="pill" style="background: rgba(148, 163, 184, 0.12); color: #cbd5e1; border: 1px solid rgba(148, 163, 184, 0.25); font-size: 0.78rem;" title="สถานที่/แผนก">📍 ${escapeHtml(fullLoc)}</span>`;
+      }
+
       return `
         <div class="notif-card priority-${n.priority}" style="border-left-color: ${borderLeftColor}; ${cardBg}" data-key="${escapeHtml(String(n.docno || n.id || '').toUpperCase())}">
           <div class="notif-top">
             <div class="notif-badges">
               ${priorityBadge}
               ${assigneeBadge}
+              ${areaBadge}
             </div>
             <div class="task-status-bar">
               ${statusBar}
@@ -2524,6 +2819,9 @@
         `;
       }
 
+      // Update Area Dropdown using baseList
+      updateAreaDropdownOptions(baseList);
+
       let filtered = baseList;
       if (state.selectedBacklogFilter === 'elec') {
         filtered = baseList.filter(n => (n.channelName || '').includes('ไฟฟ้า') || (n.title || '').includes('[ไฟฟ้า]'));
@@ -2537,6 +2835,94 @@
         filtered = state.isAdmin ? pendingAdminTotal : [];
       } else if (state.selectedBacklogFilter === 'overdue') {
         filtered = baseList.filter(n => n.priority === 'urgent');
+      }
+
+      // 1. Filter by Area / Department
+      if (state.backlogSelectedArea && state.backlogSelectedArea !== 'all') {
+        const targetArea = state.backlogSelectedArea.toLowerCase();
+        filtered = filtered.filter(n => {
+          const areaGrp = getJobAreaGroup(n).toLowerCase();
+          const dept = (n.deptName || (n.metadata && n.metadata.deptName) || '').toLowerCase();
+          const loc = (n.location || (n.metadata && n.metadata.location) || '').toLowerCase();
+          return areaGrp === targetArea || dept.includes(targetArea) || loc.includes(targetArea);
+        });
+      }
+
+      // 2. Filter by Search Query
+      if (state.backlogSearchQuery) {
+        const q = state.backlogSearchQuery.toLowerCase();
+        filtered = filtered.filter(n => {
+          const doc = String(n.docno || n.id || '').toLowerCase();
+          const title = String(n.title || '').toLowerCase();
+          const msg = String(n.message || '').toLowerCase();
+          const assignee = String(n.assignee || '').toLowerCase();
+          const dept = String(n.deptName || (n.metadata && n.metadata.deptName) || '').toLowerCase();
+          const loc = String(n.location || (n.metadata && n.metadata.location) || '').toLowerCase();
+          const symptom = String(n.symptom || (n.metadata && n.metadata.symptom) || '').toLowerCase();
+          const requester = String(n.requester || (n.metadata && n.metadata.requester) || '').toLowerCase();
+          return doc.includes(q) || title.includes(q) || msg.includes(q) || assignee.includes(q) ||
+                 dept.includes(q) || loc.includes(q) || symptom.includes(q) || requester.includes(q);
+        });
+      }
+
+      // 3. Sort by Selected Order (newest, oldest, location)
+      filtered.sort((a, b) => {
+        if (state.backlogSortBy === 'oldest') {
+          const diff = getJobTimestamp(a) - getJobTimestamp(b);
+          if (diff !== 0) return diff;
+          return String(a.docno || a.id || '').localeCompare(String(b.docno || b.id || ''));
+        } else if (state.backlogSortBy === 'location') {
+          const areaA = getJobAreaGroup(a);
+          const areaB = getJobAreaGroup(b);
+          const areaComp = areaA.localeCompare(areaB, 'th');
+          if (areaComp !== 0) return areaComp;
+          return getJobTimestamp(b) - getJobTimestamp(a);
+        } else {
+          // Default: newest first
+          const diff = getJobTimestamp(b) - getJobTimestamp(a);
+          if (diff !== 0) return diff;
+          return String(b.docno || b.id || '').localeCompare(String(a.docno || a.id || ''));
+        }
+      });
+
+      // 4. Update Active Filter Notice Banner
+      const noticeEl = document.getElementById('backlogActiveFilterNotice');
+      if (noticeEl) {
+        const isSearchActive = Boolean(state.backlogSearchQuery);
+        const isAreaActive = state.backlogSelectedArea && state.backlogSelectedArea !== 'all';
+        const isSortCustom = state.backlogSortBy && state.backlogSortBy !== 'newest';
+
+        if (isSearchActive || isAreaActive || isSortCustom) {
+          const parts = [];
+          if (isSortCustom) {
+            const sortMap = { oldest: '⏳ เก่าสุด (ค้างนานสุด)', location: '📍 จัดกลุ่มตามพื้นที่' };
+            parts.push(sortMap[state.backlogSortBy] || state.backlogSortBy);
+          }
+          if (isAreaActive) {
+            parts.push(`🏢 แผนก: ${state.backlogSelectedArea}`);
+          }
+          if (isSearchActive) {
+            parts.push(`🔍 ค้นหา: "${state.backlogSearchQuery}"`);
+          }
+          noticeEl.style.display = 'flex';
+          noticeEl.innerHTML = `
+            <div>
+              <span>📊 กรองผลลัพธ์พบ <strong>${filtered.length}</strong> งาน (${escapeHtml(parts.join(' • '))})</span>
+            </div>
+            <button type="button" onclick="resetBacklogFilters()" style="background: rgba(239, 68, 68, 0.2); border: 1px solid rgba(239, 68, 68, 0.4); color: #fca5a5; padding: 3px 10px; border-radius: 6px; font-size: 0.76rem; cursor: pointer;">
+              ↺ ล้างตัวกรอง
+            </button>
+          `;
+        } else {
+          noticeEl.style.display = 'none';
+          noticeEl.innerHTML = '';
+        }
+      }
+
+      // Ensure sort select UI reflects current state
+      const sortSel = document.getElementById('backlogSortSelect');
+      if (sortSel && sortSel.value !== state.backlogSortBy) {
+        sortSel.value = state.backlogSortBy;
       }
 
       const listEl = document.getElementById('backlogList');
