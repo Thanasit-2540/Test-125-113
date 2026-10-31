@@ -69,3 +69,22 @@ self.addEventListener('notificationclick', (event) => {
     })
   );
 });
+
+self.addEventListener('pushsubscriptionchange', (event) => {
+  event.waitUntil(
+    self.registration.pushManager.subscribe(event.oldSubscription ? event.oldSubscription.options : { userVisibleOnly: true })
+      .then((subscription) => {
+        return fetch('/api/subscribe', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({
+            subscription: subscription,
+            deviceName: 'Auto-Renewed SW'
+          })
+        });
+      })
+      .catch((err) => {
+        console.warn('pushsubscriptionchange auto-sync error:', err);
+      })
+  );
+});

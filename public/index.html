@@ -916,7 +916,7 @@
           ⚙️ เมนูตั้งค่า
         </button>
 
-        <div id="headerActionsBar" class="header-actions-bar">
+        <div id="headerActionsBar" class="header-actions-bar is-hidden">
           <button class="btn btn-outline btn-sm" id="soundToggleBtn" onclick="toggleSound()">
             🔊 เสียงเตือน: เปิด
           </button>
@@ -1871,11 +1871,16 @@
     }
 
     async function initApp() {
+      const hasNotificationPerm = ('Notification' in window) && Notification.permission === 'granted';
       const savedHidden = localStorage.getItem('header_actions_hidden');
-      if (savedHidden === 'true' || (savedHidden === null && window.Notification && Notification.permission === 'granted')) {
+
+      if (hasNotificationPerm) {
+        markPushButtonSubscribed();
         toggleHeaderActions(true);
-      } else {
+      } else if (savedHidden === 'false') {
         toggleHeaderActions(false);
+      } else {
+        toggleHeaderActions(true);
       }
 
       checkUserAuth();
@@ -3465,9 +3470,14 @@ print(r.json())`;
     function markPushButtonSubscribed() {
       const btn = document.getElementById('pushSubBtn');
       if (btn) {
-        btn.textContent = '✅ เปิดรับแจ้งเตือนบนเครื่องนี้แล้ว';
+        btn.innerHTML = '<span style="color:#4ade80;">✔️</span> รับแจ้งเตือนแล้ว (อัตโนมัติ)';
         btn.classList.remove('btn-primary');
         btn.classList.add('btn-outline');
+        btn.style.borderColor = 'rgba(74, 222, 128, 0.4)';
+        btn.style.color = '#86efac';
+        btn.onclick = () => {
+          showToast('🔔 รับแจ้งเตือนอัตโนมัติเปิดอยู่', 'เครื่องนี้เปิดรับการแจ้งเตือนเรียบร้อยแล้ว ไม่ต้องกดซ้ำครับ ระบบจะส่งงานให้อัตโนมัติทันที');
+        };
       }
     }
 
@@ -3498,6 +3508,20 @@ print(r.json())`;
         if (!sub) {
           const reg = await navigator.serviceWorker.ready;
           sub = await reg.pushManager.getSubscription();
+        }
+        if (!sub && ('Notification' in window) && Notification.permission === 'granted') {
+          if (!state.vapidPublicKey) {
+            const initRes = await fetch('/api/init');
+            const initData = await initRes.json();
+            state.vapidPublicKey = initData.vapidPublicKey;
+          }
+          if (state.vapidPublicKey) {
+            const reg = await navigator.serviceWorker.ready;
+            sub = await reg.pushManager.subscribe({
+              userVisibleOnly: true,
+              applicationServerKey: urlBase64ToUint8Array(state.vapidPublicKey)
+            });
+          }
         }
         if (!sub) return;
 
@@ -3533,10 +3557,37 @@ print(r.json())`;
       if (!('serviceWorker' in navigator) || !('PushManager' in window)) return;
       try {
         const reg = await navigator.serviceWorker.register('/sw.js');
-        const sub = await reg.pushManager.getSubscription();
+        let sub = await reg.pushManager.getSubscription();
+        const hasGrantedPerm = ('Notification' in window) && Notification.permission === 'granted';
+
+        // Silent auto-renew if browser permission is already granted
+        if (!sub && hasGrantedPerm) {
+          if (!state.vapidPublicKey) {
+            try {
+              const initRes = await fetch('/api/init');
+              const initData = await initRes.json();
+              state.vapidPublicKey = initData.vapidPublicKey;
+            } catch (e) {
+              console.warn('Init fetch vapid key error:', e);
+            }
+          }
+          if (state.vapidPublicKey) {
+            try {
+              sub = await reg.pushManager.subscribe({
+                userVisibleOnly: true,
+                applicationServerKey: urlBase64ToUint8Array(state.vapidPublicKey)
+              });
+            } catch (subErr) {
+              console.warn('Silent auto-subscribe error:', subErr);
+            }
+          }
+        }
+
         if (sub) {
           markPushButtonSubscribed();
           await syncPushSubscriptionUser(sub);
+        } else if (hasGrantedPerm) {
+          markPushButtonSubscribed();
         }
       } catch (err) {
         console.warn('Service worker check error:', err);
@@ -3552,6 +3603,27 @@ print(r.json())`;
       if (!('Notification' in window) || !('serviceWorker' in navigator)) {
         alert('บราวเซอร์หรืออุปกรณ์นี้ไม่รองรับระบบ Web Push Notification\n(สำหรับ iPhone ต้องอัปเดตเป็น iOS 16.4 ขึ้นไป และเพิ่มลงหน้าจอโฮมก่อน)');
         return;
+      }
+
+      if (Notification.permission === 'granted') {
+        try {
+          const reg = await navigator.serviceWorker.ready;
+          let sub = await reg.pushManager.getSubscription();
+          if (!sub && state.vapidPublicKey) {
+            sub = await reg.pushManager.subscribe({
+              userVisibleOnly: true,
+              applicationServerKey: urlBase64ToUint8Array(state.vapidPublicKey)
+            });
+          }
+          if (sub) {
+            await syncPushSubscriptionUser(sub);
+          }
+          markPushButtonSubscribed();
+          showToast('🔔 รับแจ้งเตือนอัตโนมัติเปิดอยู่แล้ว', 'เครื่องนี้เปิดรับการแจ้งเตือนเรียบร้อยแล้ว ไม่ต้องกดซ้ำครับ ระบบจะส่งงานให้อัตโนมัติทันที');
+          return;
+        } catch (e) {
+          console.warn('Already granted subscription check:', e);
+        }
       }
 
       if (Notification.permission === 'denied') {
